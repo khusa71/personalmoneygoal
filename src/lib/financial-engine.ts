@@ -317,48 +317,33 @@ export function projectTotalWealthAtRetirement(
   longTermPortfolio: number,
   existingInvestmentMonthly: number,
   allocations: Allocation[],
-  goals: Goal[],
-  goalDetails: GoalDetail[],
+  _goals: Goal[],
+  _goalDetails: GoalDetail[],
   currentYear: number,
   retirementYear: number,
-  annualReturn: number = 0.105,
+  annualReturn: number = 0.11,
+  sipStepUpRate: number = 0,
 ): number {
+  // Projects only the long-term retirement portfolio — consistent with the retirement card.
+  // Goal SIPs live in separate short/medium-term instruments and net out to zero (invested then spent).
+  // Uses the same monthly-compounding step-up formula as the retirement card so numbers align.
   const retireYears = Math.max(0, retirementYear - currentYear);
-  let value = longTermPortfolio;
+  if (retireYears <= 0) return Math.round(longTermPortfolio);
 
-  const goalAllocMap = new Map(
-    allocations
-      .filter(a => a.goalId !== "__retirement__")
-      .map(a => [a.goalId, a.monthlyAmount]),
-  );
   const retirementSip = allocations.find(a => a.goalId === "__retirement__")?.monthlyAmount ?? 0;
 
-  for (let i = 1; i <= retireYears; i++) {
-    const year = currentYear + i;
-    let yearMonthlySip = retirementSip + existingInvestmentMonthly;
+  // Existing corpus growing at annualReturn for retireYears
+  const portfolioFV = Math.round(longTermPortfolio * Math.pow(1 + annualReturn, retireYears));
 
-    for (const goal of goals) {
-      if (goal.status !== "active") continue;
-      // Recurring goals are income-only cash expenses (liquid fund, not portfolio).
-      // Their SIP reduces monthly surplus but does not compound in the investment portfolio.
-      if (goal.isRecurring) continue;
-      const allocatedSip = goalAllocMap.get(goal.id) ?? 0;
-      if (allocatedSip > 0 && year <= goal.targetYear) {
-        yearMonthlySip += allocatedSip;
-      }
-    }
+  // Retirement SIP stepping up yearly (matches retirement card formula exactly)
+  const retirementFV = stepUpSipFutureValue(retirementSip, annualReturn, retireYears, sipStepUpRate);
 
-    value = value * (1 + annualReturn) + yearMonthlySip * 12;
+  // Existing committed SIPs + surplus buffer also step up with salary
+  const otherFV = existingInvestmentMonthly > 0
+    ? stepUpSipFutureValue(existingInvestmentMonthly, annualReturn, retireYears, sipStepUpRate)
+    : 0;
 
-    // One-time goal withdrawals from portfolio at targetYear.
-    // Recurring goals are paid from income/liquid savings — not from the portfolio.
-    const withdrawal = goalDetails
-      .filter(g => !g.isRecurring && g.targetYear === year)
-      .reduce((sum, g) => sum + g.futureCost, 0);
-    value = Math.max(0, value - withdrawal);
-  }
-
-  return Math.round(value);
+  return Math.round(portfolioFV + retirementFV + otherFV);
 }
 
 // ============================================================

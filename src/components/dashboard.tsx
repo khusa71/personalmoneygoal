@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   ComposedChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, ResponsiveContainer,
   ReferenceLine, ReferenceDot,
+  useOffset, useXAxisScale, usePlotArea,
   PieChart, Pie, Cell,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +20,72 @@ import {
 } from "@/lib/financial-engine";
 import { buildFundingPlan } from "@/lib/funding-plan";
 import ScenarioLab from "@/components/scenario-lab";
+
+// Renders thin amber timeline bars at the bottom of the portfolio growth chart.
+// Uses Recharts v3 hooks — must render as a direct child inside a chart.
+// maxVisibleYear: clamp band.end to the rightmost year in the visible data.
+function RecurringTimeline({ bands, maxVisibleYear }: {
+  bands: { id: string; label: string; start: number; end: number }[];
+  maxVisibleYear: number;
+}) {
+  const offset = useOffset();
+  const plotArea = usePlotArea();
+  const xScale = useXAxisScale(0);
+
+  if (!xScale || !offset || !plotArea) return null;
+
+  const barH = 4;
+  const gap = 2;
+  // Bottom of the plot area in SVG coordinates
+  const bottomY = offset.top + plotArea.height;
+
+  return (
+    <g>
+      {bands.map((band, idx) => {
+        // Skip entirely if the band hasn't started yet in the visible window
+        if (band.start > maxVisibleYear) return null;
+        // Clamp end to the last visible year so the bar always renders up to the edge
+        const clampedEnd = Math.min(band.end, maxVisibleYear);
+        const x1 = xScale(band.start, { position: "start" }) as number | undefined;
+        const x2 = xScale(clampedEnd, { position: "end" }) as number | undefined;
+        if (x1 == null || x2 == null) return null;
+        const barW = Math.max(0, x2 - x1);
+        const y = bottomY - barH - idx * (barH + gap);
+        // Show a trailing arrow indicator if the band was clamped
+        const isClamped = band.end > maxVisibleYear;
+        return (
+          <g key={band.id}>
+            <rect
+              x={x1}
+              y={y}
+              width={barW}
+              height={barH}
+              fill="#f59e0b"
+              opacity={0.7}
+              rx={1.5}
+            />
+            {isClamped && (
+              <polygon
+                points={`${x1 + barW},${y} ${x1 + barW + 5},${y + barH / 2} ${x1 + barW},${y + barH}`}
+                fill="#f59e0b"
+                opacity={0.7}
+              />
+            )}
+            <text
+              x={x1 + 3}
+              y={y - 2}
+              fontSize={7}
+              fill="#d97706"
+              fontWeight="700"
+            >
+              {band.label}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
 
 interface DashboardProps {
   state: AppState;
@@ -110,6 +177,13 @@ export default function Dashboard({ state }: DashboardProps) {
   const existingProjectedAtRetirement = futureValue(unallocatedLongTerm, 0.105, retireYears);
 
   const totalMonthlyInvesting = result.totalRequiredSip + state.existingInvestmentMonthly;
+
+  // Amount actually going into the investment portfolio (excludes recurring goal SIPs
+  // which are liquid cash set-asides, not portfolio investments).
+  const recurringGoalMonthly = result.allocations
+    .filter(a => state.goals.find(g => g.id === a.goalId)?.isRecurring)
+    .reduce((sum, a) => sum + a.monthlyAmount, 0);
+  const portfolioMonthlySip = totalMonthlyInvesting - recurringGoalMonthly;
 
   // Donut data — actual allocations only
   const pieData = result.allocations
@@ -229,7 +303,30 @@ export default function Dashboard({ state }: DashboardProps) {
     return rows;
   }, [result.allocations, result.retirementDetails.monthlySip, state.goals, state.existingInvestmentMonthly, retirementYear]);
 
-  const withdrawalPoints = portfolioTimeline.filter(d => d.withdrawal !== undefined);
+  const [chartYears, setChartYears] = useState<number | null>(null); // null = lifetime
+
+  const visiblePortfolioTimeline = useMemo(() => {
+    if (chartYears === null) return portfolioTimeline;
+    const cutoff = currentYear + chartYears;
+    return portfolioTimeline.filter(d => d.year <= cutoff);
+  }, [portfolioTimeline, chartYears, currentYear]);
+
+  const withdrawalPoints = visiblePortfolioTimeline.filter(d => d.withdrawal !== undefined);
+
+  // Amber bands on the portfolio chart showing each recurring goal's active period.
+  // These expenses come from income (not portfolio), so they don't reduce the line —
+  // but the shaded band shows the user when and for how long each recurring expense runs.
+  const recurringGoalBands = useMemo(() =>
+    goalDetails
+      .filter(g => g.isRecurring)
+      .map(g => ({
+        id: g.id,
+        label: g.name.split(" ")[0],
+        start: g.targetYear,
+        end: Math.min(g.endYear ?? retirementYear, retirementYear),
+      })),
+    [goalDetails, retirementYear],
+  );
 
   // ── Plan table helpers ────────────────────────────────────────────────────
 
@@ -494,14 +591,14 @@ export default function Dashboard({ state }: DashboardProps) {
       {/* ── 3. Your Plan (unified goal table + donut) ─────────────────── */}
       <Card className={card}>
         <CardHeader className={`${cardHdr} border-b border-zinc-50`}>
-          <div className="flex items-baseline justify-between">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
             <div className="flex items-center gap-3">
               <CardTitle className="text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-400 shrink-0">
                 Your plan
               </CardTitle>
               <div className="h-px w-16 bg-zinc-100" />
             </div>
-            <p className="text-sm font-bold text-zinc-900">
+            <p className="text-xs sm:text-sm font-bold text-zinc-900">
               {goalDetails.length} goal{goalDetails.length !== 1 ? "s" : ""} + retirement &middot; {formatInrFull(totalMonthlyInvesting)}/mo
             </p>
           </div>
@@ -569,13 +666,13 @@ export default function Dashboard({ state }: DashboardProps) {
                 <thead>
                   <tr className="border-b border-zinc-100">
                     <th className="py-2.5 px-4 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400">Goal</th>
-                    <th className="py-2.5 pr-4 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400">Year</th>
-                    <th className="py-2.5 pr-4 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400">Future cost</th>
+                    <th className="py-2.5 pr-4 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 hidden sm:table-cell">Year</th>
+                    <th className="py-2.5 pr-4 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 hidden sm:table-cell">Future cost</th>
                     {hasCorpusAllocations && (
-                      <th className="py-2.5 pr-4 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400">Corpus</th>
+                      <th className="py-2.5 pr-4 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 hidden sm:table-cell">Corpus</th>
                     )}
                     <th className="py-2.5 pr-4 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400">Monthly SIP</th>
-                    <th className="py-2.5 pr-4 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400">Instrument</th>
+                    <th className="py-2.5 pr-4 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 hidden sm:table-cell">Instrument</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -585,18 +682,19 @@ export default function Dashboard({ state }: DashboardProps) {
                       <td className="py-2.5 px-4">
                         <p className="text-sm font-bold text-amber-700">Emergency Fund</p>
                         <p className="text-[10px] text-zinc-400">{efPercent}% of target</p>
+                        <p className="text-[10px] text-zinc-400 tabular-nums sm:hidden">{formatInrFull(efTarget)} target</p>
                       </td>
-                      <td className="py-2.5 pr-4 text-sm tabular-nums text-zinc-400">
+                      <td className="py-2.5 pr-4 text-sm tabular-nums text-zinc-400 hidden sm:table-cell">
                         {result.emergencyFundStatus.monthsToFull > 0
                           ? `~${result.emergencyFundStatus.monthsToFull}mo`
                           : "\u2014"}
                       </td>
-                      <td className="py-2.5 pr-4 text-sm tabular-nums text-zinc-700">{formatInrFull(efTarget)}</td>
-                      {hasCorpusAllocations && <td className="py-2.5 pr-4 text-sm text-zinc-300">{"\u2014"}</td>}
+                      <td className="py-2.5 pr-4 text-sm tabular-nums text-zinc-700 hidden sm:table-cell">{formatInrFull(efTarget)}</td>
+                      {hasCorpusAllocations && <td className="py-2.5 pr-4 text-sm text-zinc-300 hidden sm:table-cell">{"\u2014"}</td>}
                       <td className="py-2.5 pr-4 text-sm font-bold tabular-nums text-zinc-900">
                         {formatInrFull(result.emergencyFundStatus.monthlyContribution)}/mo
                       </td>
-                      <td className="py-2.5 pr-4 text-[11px] text-zinc-400">Liquid Fund / Savings</td>
+                      <td className="py-2.5 pr-4 text-[11px] text-zinc-400 hidden sm:table-cell">Liquid Fund / Savings</td>
                     </tr>
                   )}
 
@@ -615,15 +713,25 @@ export default function Dashboard({ state }: DashboardProps) {
                       <tr key={g.id} className="border-b border-zinc-50 last:border-0 hover:bg-zinc-50/40 transition-colors">
                         <td className="py-2.5 px-4">
                           <p className="text-sm font-bold text-zinc-900">{g.name}</p>
-                          {g.isRecurring && <p className="text-[10px] text-zinc-400">recurring</p>}
+                          {g.isRecurring && <p className="text-[10px] text-zinc-400">recurring · from income</p>}
+                          <p className="text-[10px] text-zinc-400 tabular-nums sm:hidden">
+                            {g.isRecurring && g.endYear ? `${g.targetYear}–${g.endYear}` : g.targetYear}
+                            {" · "}{formatInrFull(g.futureCost)}{g.isRecurring ? "/yr" : ""}
+                          </p>
                         </td>
-                        <td className="py-2.5 pr-4 text-sm tabular-nums text-zinc-700">{g.targetYear}</td>
-                        <td className="py-2.5 pr-4">
-                          <p className="text-sm font-bold tabular-nums text-zinc-900">{formatInrFull(g.futureCost)}</p>
+                        <td className="py-2.5 pr-4 text-sm tabular-nums text-zinc-700 hidden sm:table-cell">
+                          {g.isRecurring && g.endYear
+                            ? `${g.targetYear}–${g.endYear}`
+                            : g.targetYear}
+                        </td>
+                        <td className="py-2.5 pr-4 hidden sm:table-cell">
+                          <p className="text-sm font-bold tabular-nums text-zinc-900">
+                            {formatInrFull(g.futureCost)}{g.isRecurring ? "/yr" : ""}
+                          </p>
                           <p className="text-[10px] tabular-nums text-zinc-400">{formatInrFull(g.todayCost)} today</p>
                         </td>
                         {hasCorpusAllocations && (
-                          <td className="py-2.5 pr-4">
+                          <td className="py-2.5 pr-4 hidden sm:table-cell">
                             {corpusToday > 0 ? (
                               <>
                                 <p className="text-sm tabular-nums text-zinc-700">{formatInr(corpusGrown)}</p>
@@ -650,7 +758,7 @@ export default function Dashboard({ state }: DashboardProps) {
                             </>
                           )}
                         </td>
-                        <td className="py-2.5 pr-4 text-[11px] text-zinc-400">{g.instrument}</td>
+                        <td className="py-2.5 pr-4 text-[11px] text-zinc-400 hidden sm:table-cell">{g.instrument}</td>
                       </tr>
                     );
                   })}
@@ -666,13 +774,14 @@ export default function Dashboard({ state }: DashboardProps) {
                         <td className="py-2.5 px-4">
                           <p className="text-sm font-bold text-zinc-900">Retirement</p>
                           <p className="text-[10px] text-zinc-400">{retireYears}yr &middot; 3.5% SWR</p>
+                          <p className="text-[10px] text-zinc-400 tabular-nums sm:hidden">{retirementYear} · {formatInr(baseCorpus)} needed</p>
                         </td>
-                        <td className="py-2.5 pr-4 text-sm tabular-nums text-zinc-700">{retirementYear}</td>
-                        <td className="py-2.5 pr-4">
+                        <td className="py-2.5 pr-4 text-sm tabular-nums text-zinc-700 hidden sm:table-cell">{retirementYear}</td>
+                        <td className="py-2.5 pr-4 hidden sm:table-cell">
                           <p className="text-sm font-bold tabular-nums text-zinc-900">{formatInr(baseCorpus)}</p>
                           <p className="text-[10px] tabular-nums text-zinc-400">corpus needed</p>
                         </td>
-                        {hasCorpusAllocations && <td className="py-2.5 pr-4 text-sm text-zinc-300">{"\u2014"}</td>}
+                        {hasCorpusAllocations && <td className="py-2.5 pr-4 text-sm text-zinc-300 hidden sm:table-cell">{"\u2014"}</td>}
                         <td className="py-2.5 pr-4">
                           <p className={`text-sm font-bold tabular-nums ${isUnderfunded ? "text-red-600" : "text-zinc-900"}`}>
                             {formatInrFull(allocated)}/mo
@@ -684,7 +793,7 @@ export default function Dashboard({ state }: DashboardProps) {
                           )}
                           <p className="text-[10px] text-zinc-400 mt-0.5">steps up yearly with salary</p>
                         </td>
-                        <td className="py-2.5 pr-4 text-[11px] text-zinc-400">NPS + Index Fund</td>
+                        <td className="py-2.5 pr-4 text-[11px] text-zinc-400 hidden sm:table-cell">NPS + Index Fund</td>
                       </tr>
                     );
                   })()}
@@ -697,7 +806,7 @@ export default function Dashboard({ state }: DashboardProps) {
                     <td className="py-2.5 pr-4 text-sm font-extrabold tabular-nums text-zinc-900">
                       {formatInrFull(totalMonthlyInvesting)}/mo
                     </td>
-                    <td />
+                    <td className="hidden sm:table-cell" />
                   </tr>
                 </tfoot>
               </table>
@@ -724,13 +833,29 @@ export default function Dashboard({ state }: DashboardProps) {
             </CardTitle>
             <div className="h-px flex-1 bg-zinc-100" />
             <span className="text-[9px] text-zinc-300 font-bold uppercase tracking-[0.15em] shrink-0">
-              {formatInr(totalMonthlyInvesting)}/mo &middot; 10.5% CAGR
+              {formatInr(portfolioMonthlySip)}/mo invested &middot; 10.5% CAGR
             </span>
+          </div>
+          {/* Year-range filter */}
+          <div className="flex gap-1 mt-2.5">
+            {([5, 10, 20, null] as (number | null)[]).map((y) => (
+              <button
+                key={y ?? "lifetime"}
+                onClick={() => setChartYears(y)}
+                className={`px-2.5 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                  chartYears === y
+                    ? "bg-zinc-900 text-white"
+                    : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
+                }`}
+              >
+                {y === null ? "Lifetime" : `${y}yr`}
+              </button>
+            ))}
           </div>
         </CardHeader>
         <CardContent className={cardBody}>
-          <ResponsiveContainer width="100%" height={220}>
-            <ComposedChart data={portfolioTimeline} margin={{ left: 0, right: 16, top: 8, bottom: 0 }}>
+          <ResponsiveContainer width="100%" height={180}>
+            <ComposedChart data={visiblePortfolioTimeline} margin={{ left: 0, right: 16, top: 8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="2 2" stroke="#f4f4f5" vertical={false} />
               <XAxis
                 dataKey="year"
@@ -763,6 +888,11 @@ export default function Dashboard({ state }: DashboardProps) {
                   fontSize: 9,
                   fill: "#a1a1aa",
                 }}
+              />
+              {/* Thin amber timeline bars at chart bottom — recurring expenses paid from income */}
+              <RecurringTimeline
+                bands={recurringGoalBands}
+                maxVisibleYear={visiblePortfolioTimeline[visiblePortfolioTimeline.length - 1]?.year ?? retirementYear}
               />
               {withdrawalPoints.map(pt => (
                 <ReferenceDot
@@ -804,7 +934,7 @@ export default function Dashboard({ state }: DashboardProps) {
             </ComposedChart>
           </ResponsiveContainer>
           <p className="text-[9px] text-zinc-300 mt-2">
-            Solid: portfolio value &middot; Dashed: after goal payouts &middot; Red dots: goal withdrawals &middot; Dashed line: retirement corpus needed
+            Solid: portfolio value &middot; Dashed: after goal payouts &middot; Red dots: one-time withdrawals &middot; Amber bands: recurring expenses (paid from income) &middot; Dashed line: corpus needed
           </p>
         </CardContent>
       </Card>
@@ -859,7 +989,7 @@ export default function Dashboard({ state }: DashboardProps) {
                 SIP waterfall -- freed SIPs redirect to retirement as goals complete
               </p>
               <div className="space-y-1.5">
-                <div className="flex items-baseline gap-3">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
                   <span className="text-[10px] text-zinc-400 w-10 shrink-0">Now</span>
                   <span className="text-[10px] text-zinc-500">&mdash;</span>
                   <span className="text-[11px] font-bold tabular-nums text-zinc-900">
@@ -870,7 +1000,7 @@ export default function Dashboard({ state }: DashboardProps) {
                   </span>
                 </div>
                 {waterfallSchedule.map((row, i) => (
-                  <div key={i} className="flex items-baseline gap-3">
+                  <div key={i} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
                     <span className="text-[10px] text-zinc-400 w-10 shrink-0">{row.year}</span>
                     <span className="text-[10px] text-zinc-500">{row.goalName} done</span>
                     <span className="text-[10px] font-bold tabular-nums" style={{ color: "#10b981" }}>+{formatInrFull(row.freed)}</span>

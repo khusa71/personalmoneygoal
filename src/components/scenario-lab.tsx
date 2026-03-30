@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import type { AppState } from "@/lib/store";
 import type { FeasibilityResult } from "@/types";
-import { computeAllocations, computeGoalDetail, projectTotalWealthAtRetirement, formatInr, formatInrFull } from "@/lib/financial-engine";
+import { computeAllocations, stepUpSipFutureValue, getSalaryGrowthRate, formatInr, formatInrFull } from "@/lib/financial-engine";
 import { buildFundingPlan } from "@/lib/funding-plan";
 
 interface ScenarioLabProps {
@@ -161,10 +161,6 @@ export default function ScenarioLab({ state }: ScenarioLabProps) {
     },
   ], [state, totalExpenses, retireScenarioAge]);
 
-  const goalDetails = useMemo(() => {
-    return state.goals.filter(g => g.status === "active").map(g => computeGoalDetail(g, currentYear));
-  }, [state.goals, currentYear]);
-
   const results = useMemo(() => {
     return scenarios.map((scenario) => {
       const adjustedProfile = {
@@ -198,40 +194,108 @@ export default function ScenarioLab({ state }: ScenarioLabProps) {
         goalSipOverrides,
       );
 
-      // Full portfolio projection: existing portfolio growth + all SIPs - goal withdrawals
-      const retirementYear = currentYear + Math.max(1, scenario.retirementAge - state.profile.age);
-      const projectedWealth = projectTotalWealthAtRetirement(
-        state.longTermPortfolio || 0,
-        state.existingInvestmentMonthly,
-        result.allocations,
-        state.goals,
-        goalDetails,
-        currentYear,
-        retirementYear,
-      );
+      // Wealth at retire = retirement SIP projection (matches retirement card) + surplus buffer compounding.
+      // existingInvestmentMonthly is excluded: it already reduced the surplus that funded the retirement SIP,
+      // so including it again would double-count. longTermPortfolio is constant across scenarios and excluded.
+      const available = result.monthlySurplus - state.existingInvestmentMonthly;
+      const monthlyBuffer = Math.max(0, available - result.totalIdealSip);
+      const sipStepUp = Math.min(0.10, scenario.salaryGrowth ?? getSalaryGrowthRate(state.profile.age));
+      const retirementYears = Math.max(1, scenario.retirementAge - state.profile.age);
+      const bufferFV = monthlyBuffer > 0
+        ? stepUpSipFutureValue(monthlyBuffer, 0.11, retirementYears, sipStepUp)
+        : 0;
+      const projectedWealth = Math.round(result.retirementDetails.projectedCorpus + bufferFV);
 
       return { scenario, result, projectedWealth };
     });
-  }, [scenarios, state, currentYear, goalDetails]);
+  }, [scenarios, state, currentYear]);
 
   const baseResult = results[0]?.result;
 
   return (
     <Card className={card}>
       <CardHeader className="px-5 pt-4 pb-3">
-        <div className="flex items-baseline justify-between">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
           <div className="flex items-center gap-3">
             <CardTitle className="text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-400 shrink-0">
               Stress test · {scenarios.length} scenarios
             </CardTitle>
             <div className="h-px w-16 bg-zinc-100" />
           </div>
-          <p className="text-sm font-bold text-zinc-900">Same goals · Different life circumstances</p>
+          <p className="text-xs sm:text-sm font-bold text-zinc-900">Same goals · Different life circumstances</p>
         </div>
       </CardHeader>
 
       <CardContent className="px-0 pb-0">
-        <div className="overflow-x-auto">
+
+        {/* Mobile: card layout */}
+        <div className="sm:hidden divide-y divide-zinc-50">
+          {results.map(({ scenario, result, projectedWealth }, i) => {
+            const available = result.monthlySurplus - state.existingInvestmentMonthly;
+            const buffer = available - result.totalIdealSip;
+            const isBase = i === 0;
+            const baseWealth = results[0]?.projectedWealth ?? 0;
+            const corpusDelta = isBase ? 0 : projectedWealth - baseWealth;
+            const isLaidOff = scenario.name.includes("Laid off");
+            const efDrain = isLaidOff ? Math.min(state.liquidSavings || 0, totalExpenses * 6) : 0;
+            return (
+              <div key={i} className={`px-5 py-4 ${isBase ? "bg-zinc-50/60" : ""}`}>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className={`text-sm text-zinc-900 ${isBase ? "font-extrabold" : "font-medium"}`}>
+                    {scenario.name}
+                  </span>
+                  {isBase && (
+                    <Badge variant="secondary" className="text-[8px] font-black uppercase tracking-[0.12em] px-1.5 py-0 h-4 bg-zinc-100 text-zinc-500 rounded-[2px]">
+                      Base
+                    </Badge>
+                  )}
+                  <Badge
+                    className="ml-auto text-[9px] font-black uppercase tracking-[0.12em] border-0 rounded-[2px]"
+                    style={result.feasible ? { background: "#ecfdf5", color: "#059669" } : { background: "#fef2f2", color: "#dc2626" }}
+                  >
+                    {result.feasible ? "OK" : "Short"}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 mb-0.5">Surplus / mo</p>
+                    <p className="text-sm tabular-nums text-zinc-700">{formatInrFull(result.monthlySurplus)}</p>
+                    {!isBase && result.monthlySurplus !== baseResult?.monthlySurplus && (
+                      <p className="text-[10px] tabular-nums font-medium" style={{ color: (result.monthlySurplus - (baseResult?.monthlySurplus ?? 0)) >= 0 ? "#10b981" : "#ef4444" }}>
+                        {(result.monthlySurplus - (baseResult?.monthlySurplus ?? 0)) >= 0 ? "+" : "-"}{formatInr(Math.abs(result.monthlySurplus - (baseResult?.monthlySurplus ?? 0)))} vs base
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 mb-0.5">Gap / Buffer</p>
+                    <p className="text-sm font-bold tabular-nums" style={{ color: buffer >= 0 ? "#10b981" : "#ef4444" }}>
+                      {buffer >= 0 ? "+" : "-"}{formatInrFull(Math.abs(buffer))}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 mb-0.5">SIP needed</p>
+                    <p className="text-sm tabular-nums text-zinc-700">{formatInrFull(result.totalIdealSip)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 mb-0.5">Wealth at retire</p>
+                    <p className="text-sm tabular-nums text-zinc-700">{formatInrFull(projectedWealth)}</p>
+                    {!isBase && corpusDelta !== 0 && (
+                      <p className="text-[10px] tabular-nums font-medium" style={{ color: corpusDelta >= 0 ? "#10b981" : "#ef4444" }}>
+                        {corpusDelta >= 0 ? "+" : "-"}{formatInr(Math.abs(corpusDelta))} vs base
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {isLaidOff && efDrain > 0 && (
+                  <p className="text-[10px] text-zinc-400 mt-2">6-mo gap drains {formatInr(efDrain)} from emergency fund</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop: table layout */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-t border-b border-zinc-100">
