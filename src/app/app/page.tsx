@@ -66,49 +66,76 @@ export default function AppPage() {
       }}
     >
       {/* Nav */}
-      <nav className="shrink-0 bg-white/80 backdrop-blur-md border-b border-zinc-200/40 px-6 h-14 flex items-center justify-between gap-6">
-        <div className="flex items-center gap-6">
-          <span className="text-[15px] font-black tracking-[-0.04em] text-zinc-900 shrink-0">FinGoal</span>
+      <nav className="shrink-0 bg-white/80 backdrop-blur-md border-b border-zinc-200/40 px-4 sm:px-6">
+        {/* Top row */}
+        <div className="h-14 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4 sm:gap-6">
+            <span className="text-[15px] font-black tracking-[-0.04em] text-zinc-900 shrink-0">FinGoal</span>
 
+            {/* Tabs — desktop only in top row */}
+            <div className="hidden sm:block">
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(String(v))}>
+                <TabsList className="h-8 bg-zinc-100/70 p-0.5 gap-0.5">
+                  <TabsTrigger
+                    value="dashboard"
+                    className="h-7 px-3.5 text-[10.5px] font-bold uppercase tracking-[0.1em] data-active:bg-zinc-900 data-active:text-white data-active:shadow-none rounded-[2px]"
+                  >
+                    Dashboard
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="goals"
+                    className="h-7 px-3.5 text-[10.5px] font-bold uppercase tracking-[0.1em] data-active:bg-zinc-900 data-active:text-white data-active:shadow-none rounded-[2px]"
+                  >
+                    Goals ({state.goals.length})
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="text-[11px] text-zinc-400 font-medium hidden lg:block tabular-nums">
+              {state.profile.name && `${state.profile.name} · `}
+              {state.profile.age}yr · ₹{(state.profile.annualIncome / 100000).toFixed(0)}L · Retire {state.retirementAge}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditingProfile(true)}
+              className="h-7 px-2 sm:px-3 text-[10.5px] font-bold uppercase tracking-[0.1em] border-zinc-200 text-zinc-600 hover:border-zinc-400 hover:text-zinc-900 rounded-[2px]"
+            >
+              <span className="hidden sm:inline">Edit Profile</span>
+              <span className="sm:hidden">Edit</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSignOut}
+              className="h-7 px-2 text-[10.5px] font-bold uppercase tracking-[0.1em] text-zinc-400 hover:text-zinc-600 hover:bg-transparent"
+            >
+              Sign out
+            </Button>
+          </div>
+        </div>
+
+        {/* Mobile tabs row */}
+        <div className="sm:hidden pb-2">
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(String(v))}>
-            <TabsList className="h-8 bg-zinc-100/70 p-0.5 gap-0.5">
+            <TabsList className="h-8 bg-zinc-100/70 p-0.5 gap-0.5 w-full">
               <TabsTrigger
                 value="dashboard"
-                className="h-7 px-3.5 text-[10.5px] font-bold uppercase tracking-[0.1em] data-active:bg-zinc-900 data-active:text-white data-active:shadow-none rounded-[2px]"
+                className="flex-1 h-7 px-3.5 text-[10.5px] font-bold uppercase tracking-[0.1em] data-active:bg-zinc-900 data-active:text-white data-active:shadow-none rounded-[2px]"
               >
                 Dashboard
               </TabsTrigger>
               <TabsTrigger
                 value="goals"
-                className="h-7 px-3.5 text-[10.5px] font-bold uppercase tracking-[0.1em] data-active:bg-zinc-900 data-active:text-white data-active:shadow-none rounded-[2px]"
+                className="flex-1 h-7 px-3.5 text-[10.5px] font-bold uppercase tracking-[0.1em] data-active:bg-zinc-900 data-active:text-white data-active:shadow-none rounded-[2px]"
               >
                 Goals ({state.goals.length})
               </TabsTrigger>
             </TabsList>
           </Tabs>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <span className="text-[11px] text-zinc-400 font-medium hidden lg:block tabular-nums">
-            {state.profile.name && `${state.profile.name} · `}
-            {state.profile.age}yr · ₹{(state.profile.annualIncome / 100000).toFixed(0)}L · Retire {state.retirementAge}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setEditingProfile(true)}
-            className="h-7 px-3 text-[10.5px] font-bold uppercase tracking-[0.1em] border-zinc-200 text-zinc-600 hover:border-zinc-400 hover:text-zinc-900 rounded-[2px]"
-          >
-            Edit Profile
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleSignOut}
-            className="h-7 px-2 text-[10.5px] font-bold uppercase tracking-[0.1em] text-zinc-400 hover:text-zinc-600 hover:bg-transparent"
-          >
-            Sign out
-          </Button>
         </div>
       </nav>
 
@@ -126,7 +153,7 @@ export default function AppPage() {
         ) : activeTab === "dashboard" ? (
           <Dashboard state={state} />
         ) : (
-          <div className="max-w-5xl mx-auto px-6 py-8">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
             <GoalPlanner
               state={state}
               onAddGoal={addGoal}

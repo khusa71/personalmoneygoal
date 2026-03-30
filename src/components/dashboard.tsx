@@ -146,6 +146,9 @@ export default function Dashboard({ state }: DashboardProps) {
         if (year <= efEndYear) yearMonthlySip += efContrib;
         for (const goal of state.goals) {
           if (goal.status !== "active") continue;
+          // Recurring goals are income-only cash expenses stored in liquid savings,
+          // not in the investment portfolio — skip them here.
+          if (goal.isRecurring) continue;
           const allocatedSip = goalAllocMap.get(goal.id) ?? 0;
           if (allocatedSip > 0 && year <= goal.targetYear) {
             yearMonthlySip += allocatedSip;
@@ -153,8 +156,10 @@ export default function Dashboard({ state }: DashboardProps) {
         }
         value = value * (1 + annualReturn) + yearMonthlySip * 12;
       }
-      const goalsThisYear = goalDetails.filter(g => g.targetYear === year);
-      const withdrawal = goalsThisYear.reduce((sum, g) => sum + g.futureCost, 0);
+      // Only one-time goals withdraw from the portfolio.
+      // Recurring goals are paid from income/liquid savings each year — not from portfolio.
+      const oneTimeGoalsThisYear = goalDetails.filter(g => !g.isRecurring && g.targetYear === year);
+      const withdrawal = oneTimeGoalsThisYear.reduce((sum, g) => sum + g.futureCost, 0);
       const beforeWithdrawal = value;
       value = Math.max(0, value - withdrawal);
       return {
@@ -162,7 +167,7 @@ export default function Dashboard({ state }: DashboardProps) {
         portfolio: Math.round(beforeWithdrawal),
         netOfGoals: Math.round(value),
         withdrawal: withdrawal > 0 ? Math.round(withdrawal) : undefined,
-        goalLabels: goalsThisYear.map(g => g.name.split(" ")[0]).join("+"),
+        goalLabels: oneTimeGoalsThisYear.map(g => g.name.split(" ")[0]).join("+"),
       };
     });
   }, [state.longTermPortfolio, state.existingInvestmentMonthly, result, state.goals, goalDetails, currentYear, retireYears]);
@@ -175,11 +180,17 @@ export default function Dashboard({ state }: DashboardProps) {
       .filter(a => {
         if (a.goalId === "__retirement__") return false;
         const goal = state.goals.find(g => g.id === a.goalId);
-        return goal && !goal.isRecurring && a.monthlyAmount > 0 && goal.targetYear < retirementYear;
+        if (!goal || a.monthlyAmount <= 0) return false;
+        // For one-time goals: SIP frees up at targetYear.
+        // For recurring goals: SIP frees up at endYear (when the expense stops).
+        // Recurring goals without an endYear never free up — exclude them.
+        const freeYear = goal.isRecurring ? (goal.endYear ?? null) : goal.targetYear;
+        return freeYear !== null && freeYear < retirementYear;
       })
       .map(a => {
         const goal = state.goals.find(g => g.id === a.goalId)!;
-        return { targetYear: goal.targetYear, monthlyAmount: a.monthlyAmount };
+        const freeYear = goal.isRecurring ? (goal.endYear ?? goal.targetYear) : goal.targetYear;
+        return { targetYear: freeYear, monthlyAmount: a.monthlyAmount };
       });
     return simulateWaterfallRetirement(
       result.retirementDetails.monthlySip,
@@ -199,11 +210,16 @@ export default function Dashboard({ state }: DashboardProps) {
       .filter(a => {
         if (a.goalId === "__retirement__") return false;
         const goal = state.goals.find(g => g.id === a.goalId);
-        return goal && !goal.isRecurring && a.monthlyAmount > 0 && goal.targetYear < retirementYear;
+        if (!goal || a.monthlyAmount <= 0) return false;
+        // For one-time goals: SIP frees up at targetYear.
+        // For recurring goals: SIP frees up at endYear (when the expense stops).
+        const freeYear = goal.isRecurring ? (goal.endYear ?? null) : goal.targetYear;
+        return freeYear !== null && freeYear < retirementYear;
       })
       .map(a => {
         const goal = state.goals.find(g => g.id === a.goalId)!;
-        return { goalName: a.goalName, targetYear: goal.targetYear, monthlyAmount: a.monthlyAmount };
+        const freeYear = goal.isRecurring ? (goal.endYear ?? goal.targetYear) : goal.targetYear;
+        return { goalName: a.goalName, targetYear: freeYear, monthlyAmount: a.monthlyAmount };
       })
       .sort((a, b) => a.targetYear - b.targetYear);
     for (const item of eligible) {
@@ -322,14 +338,14 @@ export default function Dashboard({ state }: DashboardProps) {
   // ── JSX ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8 space-y-4">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-4">
 
       {/* ── 1. Verdict Banner ─────────────────────────────────────────── */}
       <Card
         className={card}
         style={{ borderLeft: `4px solid ${result.feasible ? "#10b981" : "#ef4444"}` }}
       >
-        <CardContent className="px-5 py-5 flex items-center justify-between">
+        <CardContent className="px-5 py-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-400 mb-0.5">Plan status</p>
             <h2 className="text-2xl font-black tracking-tight text-zinc-900">
@@ -349,7 +365,7 @@ export default function Dashboard({ state }: DashboardProps) {
                   })()}
             </p>
           </div>
-          <div className="text-right shrink-0 ml-10">
+          <div className="sm:text-right shrink-0 sm:ml-10">
             <Badge
               className="text-[9px] font-black uppercase tracking-[0.15em] border-0 mb-1"
               style={result.feasible
@@ -370,7 +386,7 @@ export default function Dashboard({ state }: DashboardProps) {
       </Card>
 
       {/* ── 2. Cash Flow + Wealth Snapshot ────────────────────────────── */}
-      <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
 
         {/* Monthly Cash Flow */}
         <Card className={card}>
@@ -502,11 +518,11 @@ export default function Dashboard({ state }: DashboardProps) {
             </div>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: pieData.length > 0 ? "220px 1fr" : "1fr" }}>
+          <div className={pieData.length > 0 ? "flex flex-col md:grid md:[grid-template-columns:220px_1fr]" : ""}>
 
             {/* Donut sidebar */}
             {pieData.length > 0 && (
-              <div className="border-r border-zinc-50 px-4 py-4">
+              <div className="border-b md:border-b-0 md:border-r border-zinc-50 px-4 py-4">
                 <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-400 mb-2">Allocation</p>
                 <ResponsiveContainer width="100%" height={130}>
                   <PieChart>
@@ -805,7 +821,7 @@ export default function Dashboard({ state }: DashboardProps) {
           </div>
         </CardHeader>
         <CardContent className={cardBody}>
-          <div className="grid grid-cols-3 gap-6 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-4">
             <div>
               <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-400 mb-1.5">Corpus needed</p>
               <p className="text-lg font-extrabold tabular-nums text-zinc-900">{formatInr(baseCorpus)}</p>

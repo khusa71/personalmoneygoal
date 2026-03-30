@@ -176,7 +176,7 @@ export default function ProfileEditor({ state, onSave, onCancel }: ProfileEditor
   ]);
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-8 pb-24">
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-24">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-zinc-900">Edit profile</h2>
@@ -192,7 +192,7 @@ export default function ProfileEditor({ state, onSave, onCancel }: ProfileEditor
       {/* ── 1. Basics ──────────────────────────────────────────── */}
       <div className={sectionCls}>
         <p className={sectionTitle}>Basics</p>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <Label className={labelCls}>Name</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
@@ -266,7 +266,7 @@ export default function ProfileEditor({ state, onSave, onCancel }: ProfileEditor
       {/* ── 3. Expenses ────────────────────────────────────────── */}
       <div className={sectionCls}>
         <p className={sectionTitle}>Monthly expenses</p>
-        <div className="grid grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
           <div>
             <Label className={labelCls}>Core expenses</Label>
             <div className="relative">

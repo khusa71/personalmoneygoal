@@ -80,7 +80,7 @@ export default function StepExpenses({ data, onChange }: Props) {
       </Button>
 
       {/* Expense grid */}
-      <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+      <div className="grid grid-cols-2 gap-x-3 sm:gap-x-6 gap-y-4">
         {FIELDS.map(({ key, label }) => (
           <div key={key}>
             <Label className={labelCls}>{label}</Label>

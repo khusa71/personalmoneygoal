@@ -143,15 +143,16 @@ export function buildFundingPlan(
             fundingLabel: `${formatInr(liquidSaved)} liquid savings${sipLabel}`,
           };
         }
-        // No corpus — fund from income
-        const monthly = Math.round(goal.todayCost / 12);
+        // No corpus — fund from income.
+        // Use inflation-adjusted first-year cost so the set-aside keeps pace with inflation.
+        const monthly = Math.round(detail.futureCost / 12);
         return {
           goal, detail, strategy,
           monthlyCommitment: monthly,
           stepUpRate: 0,
           savingsAllocated: 0, liquidAllocated: 0, longTermAllocated: 0,
           savingsGrown: 0, compoundingCost: 0,
-          fundingLabel: `${formatInrFull(monthly)}/mo from income (annual)`,
+          fundingLabel: `${formatInrFull(monthly)}/mo from income (inflation-adjusted)`,
         };
       }
       // Non-recurring income_only goal — use liquid allocation if available

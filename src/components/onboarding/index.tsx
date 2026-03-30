@@ -208,7 +208,7 @@ export default function Onboarding({ state, onComplete }: OnboardingProps) {
 
       <div className="h-screen flex flex-col bg-[#FAFAF8]">
         {/* Top nav */}
-        <nav className="shrink-0 bg-white/80 backdrop-blur-md border-b border-zinc-200/40 flex justify-between items-center px-6 h-[52px]">
+        <nav className="shrink-0 bg-white/80 backdrop-blur-md border-b border-zinc-200/40 flex justify-between items-center px-4 sm:px-6 h-[52px]">
           <div className="flex items-center gap-4">
           {step > 0 ? (
               <Button
@@ -244,7 +244,7 @@ export default function Onboarding({ state, onComplete }: OnboardingProps) {
         </nav>
 
         {/* Segmented progress */}
-        <div className="shrink-0 bg-white/80 backdrop-blur-sm border-b border-zinc-100 px-6 pt-2.5 pb-2">
+        <div className="shrink-0 bg-white/80 backdrop-blur-sm border-b border-zinc-100 px-4 sm:px-6 pt-2.5 pb-2">
           <div className="max-w-xl mx-auto">
             {/* Segment pills */}
             <div className="flex gap-1.5 mb-1.5">
@@ -285,7 +285,7 @@ export default function Onboarding({ state, onComplete }: OnboardingProps) {
 
         {/* Scrollable content */}
         <main className="flex-1 min-h-0 overflow-y-auto">
-          <div className="max-w-xl mx-auto px-6 py-8">
+          <div className="max-w-xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
             {/* Step header */}
             <div className="relative mb-8 overflow-hidden">
               {/* Ghost step number */}
@@ -319,7 +319,7 @@ export default function Onboarding({ state, onComplete }: OnboardingProps) {
 
         {/* Fixed bottom bar */}
         <footer className="shrink-0 border-t border-zinc-200/60 bg-white/90 backdrop-blur-md">
-          <div className="max-w-xl mx-auto px-6 py-3.5 flex justify-between items-center">
+          <div className="max-w-xl mx-auto px-4 sm:px-6 py-3.5 flex justify-between items-center">
             {step > 0 ? (
               <Button
                 variant="ghost"

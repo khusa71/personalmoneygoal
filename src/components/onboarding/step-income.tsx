@@ -167,7 +167,7 @@ export default function StepIncome({ data, onChange }: Props) {
       {/* Summary */}
       {data.annualIncome > 0 && (
         <Card className="rounded-lg ring-0 shadow-[0_8px_24px_rgba(0,0,0,0.04)] gap-0 py-0">
-          <CardContent className="p-5 grid grid-cols-3 gap-4 text-center">
+          <CardContent className="p-5 grid grid-cols-3 gap-2 sm:gap-4 text-center">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-400 mb-1">
                 Gross/mo

@@ -339,6 +339,9 @@ export function projectTotalWealthAtRetirement(
 
     for (const goal of goals) {
       if (goal.status !== "active") continue;
+      // Recurring goals are income-only cash expenses (liquid fund, not portfolio).
+      // Their SIP reduces monthly surplus but does not compound in the investment portfolio.
+      if (goal.isRecurring) continue;
       const allocatedSip = goalAllocMap.get(goal.id) ?? 0;
       if (allocatedSip > 0 && year <= goal.targetYear) {
         yearMonthlySip += allocatedSip;
@@ -347,9 +350,10 @@ export function projectTotalWealthAtRetirement(
 
     value = value * (1 + annualReturn) + yearMonthlySip * 12;
 
-    // Goal withdrawals at this year
+    // One-time goal withdrawals from portfolio at targetYear.
+    // Recurring goals are paid from income/liquid savings — not from the portfolio.
     const withdrawal = goalDetails
-      .filter(g => g.targetYear === year)
+      .filter(g => !g.isRecurring && g.targetYear === year)
       .reduce((sum, g) => sum + g.futureCost, 0);
     value = Math.max(0, value - withdrawal);
   }
@@ -647,5 +651,14 @@ export const GOAL_TEMPLATES: GoalTemplate[] = [
     defaultYearsFromNow: 2,
     isRecurring: false,
     description: "Sofa, TV, fridge, washing machine, AC",
+  },
+  {
+    name: "Loan / EMI",
+    category: "custom",
+    defaultCost: 240000,
+    inflationRate: 0,
+    defaultYearsFromNow: 1,
+    isRecurring: true,
+    description: "Car loan, personal loan, education loan, or any existing EMI (enter annual EMI = monthly × 12)",
   },
 ];

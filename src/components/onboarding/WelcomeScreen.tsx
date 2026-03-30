@@ -83,7 +83,7 @@ export default function WelcomeScreen({ onStart }: WelcomeScreenProps) {
         }}
       >
         {/* Nav */}
-        <nav className="ws-fi shrink-0 h-[52px] bg-white/75 backdrop-blur-md border-b border-zinc-200/50 flex items-center justify-between px-10">
+        <nav className="ws-fi shrink-0 h-[52px] bg-white/75 backdrop-blur-md border-b border-zinc-200/50 flex items-center justify-between px-4 sm:px-10">
           <div className="flex items-center gap-3">
             <div
               className="w-7 h-7 bg-zinc-900 flex items-center justify-center rounded-[3px] shrink-0"
@@ -99,7 +99,7 @@ export default function WelcomeScreen({ onStart }: WelcomeScreenProps) {
         </nav>
 
         {/* Main two-column */}
-        <main className="flex-1 min-h-0 grid grid-cols-[1.1fr_0.9fr] max-w-[1100px] mx-auto w-full px-10 gap-16 items-center">
+        <main className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] max-w-[1100px] mx-auto w-full px-6 sm:px-10 gap-16 items-center py-8 lg:py-0">
 
           {/* LEFT — editorial hero */}
           <div className="relative">
@@ -180,8 +180,8 @@ export default function WelcomeScreen({ onStart }: WelcomeScreenProps) {
             </div>
           </div>
 
-          {/* RIGHT — preview pane */}
-          <div className="ws-su ws-d3">
+          {/* RIGHT — preview pane (hidden on mobile) */}
+          <div className="ws-su ws-d3 hidden lg:block">
             {/* Label */}
             <div className="ws-fi ws-d2 flex items-center gap-3 mb-3">
               <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 shrink-0">

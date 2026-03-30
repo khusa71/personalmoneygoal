@@ -121,20 +121,20 @@ export default function GoalPlanner({
 
       {/* ━━━ Quick stats ━━━ */}
       {state.goals.length > 0 && (
-        <div className="grid grid-cols-3 gap-3 mb-8">
-          <div className="py-3 px-4 bg-white border border-zinc-200 rounded-sm">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-8">
+          <div className="py-3 px-2 sm:px-4 bg-white border border-zinc-200 rounded-sm">
             <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-400 mb-1">Surplus</p>
-            <p className="text-lg font-extrabold tabular-nums text-zinc-900">{formatInrFull(Math.round(monthlySurplus))}</p>
+            <p className="text-base sm:text-lg font-extrabold tabular-nums text-zinc-900">{formatInrFull(Math.round(monthlySurplus))}</p>
             <p className="text-[10px] text-zinc-400">per month</p>
           </div>
-          <div className="py-3 px-4 bg-white border border-zinc-200 rounded-sm">
+          <div className="py-3 px-2 sm:px-4 bg-white border border-zinc-200 rounded-sm">
             <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-400 mb-1">Committed</p>
-            <p className="text-lg font-extrabold tabular-nums text-zinc-900">{formatInrFull(Math.round(totalMonthly))}</p>
+            <p className="text-base sm:text-lg font-extrabold tabular-nums text-zinc-900">{formatInrFull(Math.round(totalMonthly))}</p>
             <p className="text-[10px] text-zinc-400">{state.goals.length} goal{state.goals.length !== 1 ? "s" : ""}</p>
           </div>
-          <div className="py-3 px-4 bg-white border border-zinc-200 rounded-sm">
+          <div className="py-3 px-2 sm:px-4 bg-white border border-zinc-200 rounded-sm">
             <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-400 mb-1">Remaining</p>
-            <p className={`text-lg font-extrabold tabular-nums ${leftover >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+            <p className={`text-base sm:text-lg font-extrabold tabular-nums ${leftover >= 0 ? "text-emerald-600" : "text-red-600"}`}>
               {leftover >= 0 ? formatInrFull(leftover) : `-${formatInrFull(Math.abs(leftover))}`}
             </p>
             <p className="text-[10px] text-zinc-400">{leftover >= 0 ? "for you" : "over-committed"}</p>
@@ -148,7 +148,7 @@ export default function GoalPlanner({
           <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-400 mb-4">
             Suggested for you
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {unaddedSuggestions.slice(0, 6).map((s, i) => {
               const meta = CATEGORY_META[s.template.category];
               const { Icon } = meta;
@@ -436,13 +436,24 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
   const [addLoanGoal, setAddLoanGoal] = useState(true);
   const [loanTenure, setLoanTenure] = useState(20);
   const [loanRate, setLoanRate] = useState(8.5);
+  // Car loan
+  const [addCarLoan, setAddCarLoan] = useState(false);
+  const [carDownPercent, setCarDownPercent] = useState(20);
+  const [carLoanTenure, setCarLoanTenure] = useState(5);
+  const [carLoanRate, setCarLoanRate] = useState(9.5);
 
   const category: GoalCategory = existingGoal?.category ?? template?.category ?? "custom";
   const inflationRate = getInflationRate(category);
   const isHouse = category === "house";
+  const isCar = category === "car";
 
   // For house goals, user enters property value but we save down payment (20%) as todayCost
-  const effectiveCost = isHouse ? Math.round(todayCost * 0.20) : todayCost;
+  // For car goals with loan, user enters car value but we save down payment as todayCost
+  const effectiveCost = isHouse
+    ? Math.round(todayCost * 0.20)
+    : (isCar && addCarLoan && !isEditing)
+      ? Math.round(todayCost * carDownPercent / 100)
+      : todayCost;
 
   const preview = useMemo(
     () => computeGoalDetail(
@@ -494,6 +505,18 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
     return { propertyValue: propertyFuture, downPaymentFuture, loanAmount, emi, annualEmi, tenure: loanTenure, rate: loanRate };
   }, [isHouse, preview.futureCost, loanRate, loanTenure]);
 
+  // Car loan preview
+  const carLoanPreview = useMemo(() => {
+    if (!isCar || !addCarLoan || isEditing) return null;
+    // preview.futureCost = inflation-adjusted down payment
+    const downPaymentFuture = preview.futureCost;
+    const carValueFuture = Math.round(downPaymentFuture / (carDownPercent / 100));
+    const loanAmount = Math.round(carValueFuture * (1 - carDownPercent / 100));
+    const emi = Math.round(calculateEmi(loanAmount, carLoanRate / 100, carLoanTenure));
+    const annualEmi = emi * 12;
+    return { carValue: carValueFuture, downPaymentFuture, loanAmount, emi, annualEmi, tenure: carLoanTenure, rate: carLoanRate };
+  }, [isCar, addCarLoan, isEditing, preview.futureCost, carDownPercent, carLoanRate, carLoanTenure]);
+
   const meta = CATEGORY_META[category];
   const { Icon } = meta;
 
@@ -533,6 +556,23 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
         priority: 1,
         existingCorpus: 0,
         endYear: currentYear + yearsFromNow + loanTenure,
+      });
+    }
+
+    // Companion loan EMI goal for car
+    if (isCar && addCarLoan && carLoanPreview && !isEditing) {
+      goals.push({
+        id: `car_loan_${Date.now()}`,
+        name: `Car Loan EMI`,
+        category: "custom",
+        targetYear: currentYear + yearsFromNow,
+        todayCost: carLoanPreview.annualEmi,
+        inflationRate: 0,
+        isRecurring: true,
+        status: "active",
+        priority: 1,
+        existingCorpus: 0,
+        endYear: currentYear + yearsFromNow + carLoanTenure,
       });
     }
 
@@ -577,7 +617,7 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-[11px] font-medium text-zinc-500">
-                {isHouse ? "Property value" : isRecurring ? "Annual cost" : "Cost today"}
+                {isHouse ? "Property value" : (isCar && addCarLoan && !isEditing) ? "Car value" : isRecurring ? "Annual cost" : "Cost today"}
               </Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-zinc-400">Rs</span>
@@ -593,7 +633,7 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
             <div className="space-y-1.5">
               <div className="flex items-baseline justify-between">
                 <Label className="text-[11px] font-medium text-zinc-500">
-                  {isRecurring ? "Starting" : isHouse ? "Buy in" : "When?"}
+                  {isRecurring ? "Starting" : (isHouse || isCar) ? "Buy in" : "When?"}
                 </Label>
                 <span className="text-sm font-bold text-zinc-900 tabular-nums">
                   {currentYear + yearsFromNow}
@@ -663,6 +703,113 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
             </div>
           )}
 
+          {/* Car loan section */}
+          {isCar && !isEditing && (
+            <div className="p-4 bg-violet-50 border border-violet-100 rounded-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[11px] font-bold text-violet-800">Finance with a car loan</p>
+                  <p className="text-[9px] text-violet-600">EMI starts after purchase in {currentYear + yearsFromNow}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAddCarLoan(!addCarLoan)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 ${
+                    addCarLoan ? "bg-violet-600" : "bg-zinc-200"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                      addCarLoan ? "translate-x-[18px]" : "translate-x-[2px]"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {addCarLoan && carLoanPreview && (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div>
+                      <p className="text-[9px] text-violet-500 mb-0.5">Car value</p>
+                      <p className="text-sm font-bold tabular-nums text-violet-900">{formatInr(carLoanPreview.carValue)}</p>
+                      <p className="text-[8px] text-violet-400">in {currentYear + yearsFromNow}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-violet-500 mb-0.5">Down ({carDownPercent}%)</p>
+                      <p className="text-sm font-bold tabular-nums text-violet-900">{formatInr(carLoanPreview.downPaymentFuture)}</p>
+                      <p className="text-[8px] text-violet-400">your SIP target</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-violet-500 mb-0.5">Loan</p>
+                      <p className="text-sm font-bold tabular-nums text-violet-900">{formatInr(carLoanPreview.loanAmount)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-violet-500 mb-0.5">EMI</p>
+                      <p className="text-sm font-bold tabular-nums text-violet-900">{formatInrFull(carLoanPreview.emi)}/mo</p>
+                      <p className="text-[8px] text-violet-400">for {carLoanPreview.tenure}yr</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="flex items-baseline justify-between mb-1">
+                        <Label className="text-[10px] font-medium text-violet-600">Down payment</Label>
+                        <span className="text-[11px] font-bold text-violet-900 tabular-nums">{carDownPercent}%</span>
+                      </div>
+                      <Slider
+                        value={[carDownPercent]}
+                        onValueChange={(v) => setCarDownPercent(Array.isArray(v) ? v[0] : v)}
+                        min={10}
+                        max={50}
+                        step={5}
+                      />
+                      <div className="flex justify-between text-[9px] text-violet-300 mt-1">
+                        <span>10%</span><span>30%</span><span>50%</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-baseline justify-between mb-1">
+                        <Label className="text-[10px] font-medium text-violet-600">Tenure</Label>
+                        <span className="text-[11px] font-bold text-violet-900 tabular-nums">{carLoanTenure} years</span>
+                      </div>
+                      <Slider
+                        value={[carLoanTenure]}
+                        onValueChange={(v) => setCarLoanTenure(Array.isArray(v) ? v[0] : v)}
+                        min={1}
+                        max={7}
+                        step={1}
+                      />
+                      <div className="flex justify-between text-[9px] text-violet-300 mt-1">
+                        <span>1yr</span><span>4</span><span>7yr</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-baseline justify-between mb-1">
+                      <Label className="text-[10px] font-medium text-violet-600">Interest rate</Label>
+                      <span className="text-[11px] font-bold text-violet-900 tabular-nums">{carLoanRate}%</span>
+                    </div>
+                    <Slider
+                      value={[carLoanRate * 10]}
+                      onValueChange={(v) => setCarLoanRate((Array.isArray(v) ? v[0] : v) / 10)}
+                      min={70}
+                      max={150}
+                      step={5}
+                    />
+                    <div className="flex justify-between text-[9px] text-violet-300 mt-1">
+                      <span>7%</span><span>11%</span><span>15%</span>
+                    </div>
+                  </div>
+
+                  <p className="text-[9px] text-violet-600">
+                    Two goals will be added: save {formatInrFull(carLoanPreview.downPaymentFuture)} for the down payment, then pay {formatInrFull(carLoanPreview.emi)}/mo EMI for {carLoanTenure} years.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
           {/* Preview — funding summary */}
           <div className="p-3 bg-zinc-50 border border-zinc-100 rounded-sm space-y-3">
             <div className="flex items-baseline justify-between">
@@ -672,7 +819,9 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
                     ? "Monthly set-aside"
                     : isHouse
                       ? "Down payment SIP (20%)"
-                      : "Monthly SIP needed"}
+                      : (isCar && addCarLoan && !isEditing)
+                        ? `Down payment SIP (${carDownPercent}%)`
+                        : "Monthly SIP needed"}
                 </p>
                 <p className={`text-lg font-extrabold tabular-nums ${
                   sipPercent > 40 ? "text-red-600" : sipPercent > 20 ? "text-amber-600" : "text-zinc-900"
@@ -688,7 +837,7 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
               {!isIncomeOnly && (
                 <div className="text-right">
                   <p className="text-[10px] text-zinc-400 mb-0.5">
-                    {isHouse ? "Down payment in " + (currentYear + yearsFromNow) : "Future cost"}
+                    {isHouse || (isCar && addCarLoan && !isEditing) ? `Down payment in ${currentYear + yearsFromNow}` : "Future cost"}
                   </p>
                   <p className="text-sm font-bold tabular-nums text-zinc-700">
                     {formatInrFull(preview.futureCost)}
@@ -738,7 +887,7 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
 
               {addLoanGoal && (
                 <>
-                  <div className="grid grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div>
                       <p className="text-[9px] text-sky-500 mb-0.5">Property</p>
                       <p className="text-sm font-bold tabular-nums text-sky-900">{formatInr(loanPreview.propertyValue)}</p>
@@ -818,7 +967,7 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
               disabled={!name.trim() || todayCost <= 0}
               className="flex-1 h-10 text-sm rounded-sm"
             >
-              {isEditing ? "Update" : isHouse && addLoanGoal ? "Add 2 goals" : "Add goal"}
+              {isEditing ? "Update" : (isHouse && addLoanGoal) || (isCar && addCarLoan) ? "Add 2 goals" : "Add goal"}
             </Button>
           </div>
         </div>

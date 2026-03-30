@@ -29,7 +29,7 @@ export default function StepAbout({ data, onChange }: Props) {
   return (
     <div className="space-y-8">
       {/* Name + Age */}
-      <div className="grid grid-cols-2 gap-8">
+      <div className="grid grid-cols-2 gap-4 sm:gap-8">
         <div>
           <Label className={labelCls}>Name</Label>
           <Input
