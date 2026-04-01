@@ -156,11 +156,11 @@ export default function WelcomeScreen({ onStart }: WelcomeScreenProps) {
               </div>
               <div className="h-3 w-px bg-zinc-200" />
               <span className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-                No account
+                Free forever
               </span>
               <div className="h-3 w-px bg-zinc-200" />
               <span className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-zinc-400">
-                100% private
+                Indian salaries
               </span>
             </div>
 
@@ -282,7 +282,7 @@ export default function WelcomeScreen({ onStart }: WelcomeScreenProps) {
 
             {/* Privacy */}
             <p className="ws-fi ws-d9 text-[9px] text-zinc-400 text-center uppercase tracking-[0.12em] mt-3">
-              All data stays on your device &middot; Nothing sent to any server
+              Saved securely to your account &middot; Not financial advice
             </p>
           </div>
         </main>

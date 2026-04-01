@@ -78,13 +78,13 @@ export default function AppPage() {
                 <TabsList className="h-8 bg-zinc-100/70 p-0.5 gap-0.5">
                   <TabsTrigger
                     value="dashboard"
-                    className="h-7 px-3.5 text-[10.5px] font-bold uppercase tracking-[0.1em] data-active:bg-zinc-900 data-active:text-white data-active:shadow-none rounded-[2px]"
+                    className="h-7 px-3.5 text-[10.5px] font-bold uppercase tracking-[0.1em] data-[state=active]:bg-zinc-900 data-[state=active]:text-white data-[state=active]:shadow-none rounded-[2px]"
                   >
                     Dashboard
                   </TabsTrigger>
                   <TabsTrigger
                     value="goals"
-                    className="h-7 px-3.5 text-[10.5px] font-bold uppercase tracking-[0.1em] data-active:bg-zinc-900 data-active:text-white data-active:shadow-none rounded-[2px]"
+                    className="h-7 px-3.5 text-[10.5px] font-bold uppercase tracking-[0.1em] data-[state=active]:bg-zinc-900 data-[state=active]:text-white data-[state=active]:shadow-none rounded-[2px]"
                   >
                     Goals ({state.goals.length})
                   </TabsTrigger>
@@ -124,13 +124,13 @@ export default function AppPage() {
             <TabsList className="h-8 bg-zinc-100/70 p-0.5 gap-0.5 w-full">
               <TabsTrigger
                 value="dashboard"
-                className="flex-1 h-7 px-3.5 text-[10.5px] font-bold uppercase tracking-[0.1em] data-active:bg-zinc-900 data-active:text-white data-active:shadow-none rounded-[2px]"
+                className="flex-1 h-7 px-3.5 text-[10.5px] font-bold uppercase tracking-[0.1em] data-[state=active]:bg-zinc-900 data-[state=active]:text-white data-[state=active]:shadow-none rounded-[2px]"
               >
                 Dashboard
               </TabsTrigger>
               <TabsTrigger
                 value="goals"
-                className="flex-1 h-7 px-3.5 text-[10.5px] font-bold uppercase tracking-[0.1em] data-active:bg-zinc-900 data-active:text-white data-active:shadow-none rounded-[2px]"
+                className="flex-1 h-7 px-3.5 text-[10.5px] font-bold uppercase tracking-[0.1em] data-[state=active]:bg-zinc-900 data-[state=active]:text-white data-[state=active]:shadow-none rounded-[2px]"
               >
                 Goals ({state.goals.length})
               </TabsTrigger>
@@ -151,7 +151,7 @@ export default function AppPage() {
             onCancel={() => setEditingProfile(false)}
           />
         ) : activeTab === "dashboard" ? (
-          <Dashboard state={state} />
+          <Dashboard state={state} onGoToGoals={() => setActiveTab("goals")} />
         ) : (
           <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
             <GoalPlanner

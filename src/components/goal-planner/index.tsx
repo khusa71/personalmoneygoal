@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef, useEffect, forwardRef } from "react";
 import {
   Heart, Home, Car, BookOpen, GraduationCap, Plane, Sunset,
-  Activity, MapPin, ShoppingBag, Target, Plus, Pencil, Trash2,
+  Activity, MapPin, ShoppingBag, Target, Plus, Pencil, Trash2, CreditCard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import {
   computeGoalDetail, formatInrFull, formatInr,
   calculateTax, getInflationRate, GOAL_TEMPLATES,
   calculateEmi,
+  getSimpleBucket, SIMPLE_BUCKET_META,
   type GoalTemplate,
 } from "@/lib/financial-engine";
 import { buildFundingPlan, getFundingStrategy } from "@/lib/funding-plan";
@@ -59,6 +60,7 @@ const CATEGORY_META: Record<GoalCategory, CategoryMeta> = {
   vacation:                 { label: "Vacation",       Icon: MapPin,        color: "text-teal-600 bg-teal-50" },
   lifestyle_purchase:       { label: "Purchase",       Icon: ShoppingBag,   color: "text-purple-600 bg-purple-50" },
   custom:                   { label: "Custom",         Icon: Target,        color: "text-zinc-500 bg-zinc-100" },
+  loan:                     { label: "Loan",           Icon: CreditCard,    color: "text-blue-600 bg-blue-50" },
 };
 
 
@@ -70,6 +72,7 @@ export default function GoalPlanner({
   state, onAddGoal, onUpdateGoal, onRemoveGoal, onReorderGoals,
 }: GoalPlannerProps) {
   const [editing, setEditing] = useState<EditingState>({ mode: "idle" });
+  const [expandedGoalId, setExpandedGoalId] = useState<string | null>(null);
   const currentYear = new Date().getFullYear();
   const formRef = useRef<HTMLDivElement>(null);
 
@@ -197,15 +200,26 @@ export default function GoalPlanner({
               const { Icon } = meta;
               const monthly = funding?.monthlyCommitment ?? 0;
               const isActive = editing.mode === "edit" && editing.goal.id === goal.id;
+              const isExpanded = expandedGoalId === goal.id && !isActive;
+              const progressPct = detail.futureCost > 0
+                ? Math.min(100, Math.round((goal.existingCorpus / detail.futureCost) * 100))
+                : 0;
 
               return (
                 <div
                   key={goal.id}
                   className={`bg-white border rounded-sm transition-colors ${
-                    isActive ? "border-zinc-400" : "border-zinc-200 hover:border-zinc-300"
+                    isActive ? "border-zinc-400" : isExpanded ? "border-zinc-300" : "border-zinc-200 hover:border-zinc-300"
                   }`}
                 >
-                  <div className="flex items-center gap-4 px-4 py-3">
+                  {/* Main row — clicking the non-button area toggles detail */}
+                  <div
+                    className="flex items-center gap-4 px-4 py-3 cursor-pointer select-none"
+                    onClick={() => {
+                      if (isActive) return;
+                      setExpandedGoalId(isExpanded ? null : goal.id);
+                    }}
+                  >
                     {/* Icon */}
                     <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 ${meta.color}`}>
                       <Icon className="w-4 h-4" />
@@ -215,18 +229,33 @@ export default function GoalPlanner({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold text-zinc-900 truncate">{goal.name}</p>
-                        {goal.isRecurring && (
+                        {goal.category === "loan" && (
+                          <span className="text-[8px] font-bold uppercase tracking-wider text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded-sm shrink-0">
+                            Loan EMI
+                          </span>
+                        )}
+                        {goal.isRecurring && goal.category !== "loan" && (
                           <span className="text-[8px] font-bold uppercase tracking-wider text-zinc-400 bg-zinc-100 px-1.5 py-0.5 rounded-sm shrink-0">
                             Yearly
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-zinc-400 tabular-nums">
-                        {formatInrFull(goal.todayCost)}{goal.isRecurring ? "/yr" : ""} · {goal.targetYear}
-                        {goal.isRecurring && goal.endYear ? `--${goal.endYear}` : ""}
-                        {!goal.isRecurring && detail.yearsToGoal > 0 && ` · ${detail.yearsToGoal}yr away`}
-                        {goal.isRecurring && goal.endYear && ` · ${goal.endYear - goal.targetYear}yr`}
-                      </p>
+                      {goal.category === "loan" ? (
+                        <p className="text-[11px] text-zinc-400 tabular-nums">
+                          {goal.loanPrincipal ? `Principal ${formatInrFull(goal.loanPrincipal)}` : ""}
+                          {goal.loanInterestRate ? ` · ${(goal.loanInterestRate * 100).toFixed(1)}%` : ""}
+                          {goal.loanTenureYears ? ` · ${goal.loanTenureYears}yr` : ""}
+                          {` · Starts ${goal.targetYear}`}
+                          {goal.endYear ? ` · Paid off ${goal.endYear}` : ""}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-zinc-400 tabular-nums">
+                          {formatInrFull(goal.todayCost)}{goal.isRecurring ? "/yr" : ""} · {goal.targetYear}
+                          {goal.isRecurring && goal.endYear ? `–${goal.endYear}` : ""}
+                          {!goal.isRecurring && detail.yearsToGoal > 0 && ` · ${detail.yearsToGoal}yr away`}
+                          {goal.isRecurring && goal.endYear && ` · ${goal.endYear - goal.targetYear}yr`}
+                        </p>
+                      )}
                     </div>
 
                     {/* Monthly */}
@@ -239,13 +268,13 @@ export default function GoalPlanner({
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-0.5 shrink-0">
+                    <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => {
                           if (isActive) setEditing({ mode: "idle" });
-                          else setEditing({ mode: "edit", goal });
+                          else { setExpandedGoalId(null); setEditing({ mode: "edit", goal }); }
                         }}
                         className="h-7 w-7 p-0 text-zinc-400 hover:text-zinc-700"
                       >
@@ -261,6 +290,88 @@ export default function GoalPlanner({
                       </Button>
                     </div>
                   </div>
+
+                  {/* Expandable detail panel */}
+                  {isExpanded && goal.category === "loan" && goal.loanPrincipal && goal.loanInterestRate && goal.loanTenureYears && (
+                    <div className="border-t border-zinc-100 px-4 py-3 bg-blue-50/30">
+                      {(() => {
+                        const emi = Math.round(calculateEmi(goal.loanPrincipal!, goal.loanInterestRate!, goal.loanTenureYears!));
+                        const totalPayment = Math.round(emi * goal.loanTenureYears! * 12);
+                        const totalInterest = totalPayment - goal.loanPrincipal!;
+                        return (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div>
+                              <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-blue-400 mb-0.5">Principal</p>
+                              <p className="text-sm font-bold tabular-nums text-zinc-900">{formatInrFull(goal.loanPrincipal!)}</p>
+                              <p className="text-[10px] text-zinc-400">loan amount</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-blue-400 mb-0.5">Monthly EMI</p>
+                              <p className="text-sm font-bold tabular-nums text-zinc-900">{formatInrFull(emi)}/mo</p>
+                              <p className="text-[10px] text-zinc-400">{(goal.loanInterestRate! * 100).toFixed(1)}% · {goal.loanTenureYears}yr</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-blue-400 mb-0.5">Total interest</p>
+                              <p className="text-sm font-bold tabular-nums text-red-600">{formatInrFull(totalInterest)}</p>
+                              <p className="text-[10px] text-zinc-400">{Math.round((totalInterest / goal.loanPrincipal!) * 100)}% of principal</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-blue-400 mb-0.5">Paid off by</p>
+                              <p className="text-sm font-bold tabular-nums text-zinc-900">{goal.endYear ?? (goal.targetYear + goal.loanTenureYears!)}</p>
+                              <p className="text-[10px] text-zinc-400">total {formatInrFull(totalPayment)}</p>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                  {isExpanded && goal.category !== "loan" && (
+                    <div className="border-t border-zinc-100 px-4 py-3 bg-zinc-50/50">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+                        <div>
+                          <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 mb-0.5">Future cost</p>
+                          <p className="text-sm font-bold tabular-nums text-zinc-900">
+                            {formatInrFull(detail.futureCost)}{goal.isRecurring ? "/yr" : ""}
+                          </p>
+                          <p className="text-[10px] text-zinc-400">in {goal.targetYear}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 mb-0.5">Monthly SIP</p>
+                          <p className="text-sm font-bold tabular-nums text-zinc-900">
+                            {monthly > 0 ? formatInrFull(monthly) : formatInrFull(detail.requiredMonthlySip)}
+                          </p>
+                          {monthly > 0 && monthly < detail.requiredMonthlySip * 0.9 && (
+                            <p className="text-[10px] text-red-400">needs {formatInrFull(detail.requiredMonthlySip)}</p>
+                          )}
+                        </div>
+                        <div className="col-span-2 sm:col-span-2">
+                          <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 mb-0.5">Invest in</p>
+                          {(() => {
+                            const bucket = getSimpleBucket(detail.yearsToGoal, false);
+                            const meta = SIMPLE_BUCKET_META[bucket];
+                            return (
+                              <>
+                                <p className="text-[12px] text-zinc-900 font-bold">{meta.label}</p>
+                                <p className="text-[10px] text-zinc-400">{meta.description}</p>
+                                <p className="text-[10px] text-zinc-300 mt-0.5">{(detail.returnRate * 100).toFixed(0)}% target CAGR</p>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                      {goal.existingCorpus > 0 && (
+                        <div>
+                          <div className="flex justify-between mb-1">
+                            <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400">Progress</p>
+                            <p className="text-[10px] tabular-nums text-zinc-500">{formatInrFull(goal.existingCorpus)} of {formatInrFull(detail.futureCost)} · {progressPct}%</p>
+                          </div>
+                          <div className="h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+                            <div className="h-full bg-zinc-700 rounded-full" style={{ width: `${progressPct}%` }} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Loan EMI line for house goals */}
                   {funding?.loanEmi && funding.loanLabel && (
@@ -446,6 +557,25 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
   const inflationRate = getInflationRate(category);
   const isHouse = category === "house";
   const isCar = category === "car";
+  const isLoan = category === "loan";
+
+  // Standalone loan state (only used when isLoan)
+  const [loanPrincipal, setLoanPrincipal] = useState(() => {
+    if (existingGoal?.category === "loan" && existingGoal.loanPrincipal) return existingGoal.loanPrincipal;
+    return 500000;
+  });
+  const [standaloneLoanRate, setStandaloneLoanRate] = useState(() => {
+    if (existingGoal?.category === "loan" && existingGoal.loanInterestRate) return existingGoal.loanInterestRate * 100;
+    return 10.5;
+  });
+  const [standaloneLoanTenure, setStandaloneLoanTenure] = useState(() => {
+    if (existingGoal?.category === "loan" && existingGoal.loanTenureYears) return existingGoal.loanTenureYears;
+    return 5;
+  });
+  const [loanStartYears, setLoanStartYears] = useState(() => {
+    if (existingGoal?.category === "loan") return Math.max(0, existingGoal.targetYear - currentYear);
+    return 0;
+  });
 
   // For house goals, user enters property value but we save down payment (20%) as todayCost
   // For car goals with loan, user enters car value but we save down payment as todayCost
@@ -505,6 +635,17 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
     return { propertyValue: propertyFuture, downPaymentFuture, loanAmount, emi, annualEmi, tenure: loanTenure, rate: loanRate };
   }, [isHouse, preview.futureCost, loanRate, loanTenure]);
 
+  // Standalone loan preview (category === "loan")
+  const loanCategoryPreview = useMemo(() => {
+    if (!isLoan) return null;
+    const emi = Math.round(calculateEmi(loanPrincipal, standaloneLoanRate / 100, standaloneLoanTenure));
+    const totalPayment = Math.round(emi * standaloneLoanTenure * 12);
+    const totalInterest = totalPayment - loanPrincipal;
+    const payoffYear = currentYear + loanStartYears + standaloneLoanTenure;
+    const startYear = currentYear + loanStartYears;
+    return { emi, totalPayment, totalInterest, payoffYear, startYear };
+  }, [isLoan, loanPrincipal, standaloneLoanRate, standaloneLoanTenure, loanStartYears, currentYear]);
+
   // Car loan preview
   const carLoanPreview = useMemo(() => {
     if (!isCar || !addCarLoan || isEditing) return null;
@@ -522,6 +663,28 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
 
   const handleSave = () => {
     const goals: Goal[] = [];
+
+    // Loan goal — save principal details, store annual EMI as todayCost
+    if (isLoan && loanCategoryPreview) {
+      goals.push({
+        id: existingGoal?.id ?? `loan_${Date.now()}`,
+        name: name || "Loan",
+        category: "loan",
+        targetYear: loanCategoryPreview.startYear,
+        todayCost: loanCategoryPreview.emi * 12,  // annual EMI stored for income_only calculation
+        inflationRate: 0,
+        isRecurring: true,
+        status: "active",
+        priority: 1,
+        existingCorpus: 0,
+        endYear: loanCategoryPreview.payoffYear,
+        loanPrincipal,
+        loanInterestRate: standaloneLoanRate / 100,
+        loanTenureYears: standaloneLoanTenure,
+      });
+      onSave(goals);
+      return;
+    }
 
     // Primary goal — for house, save down payment (20%) not full property value
     const primaryGoal: Goal = {
@@ -600,11 +763,13 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
         <div className="p-5 space-y-5">
           {/* Goal name */}
           <div className="space-y-1.5">
-            <Label className="text-[11px] font-medium text-zinc-500">What are you saving for?</Label>
+            <Label className="text-[11px] font-medium text-zinc-500">
+              {isLoan ? "Loan name" : "What are you saving for?"}
+            </Label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Goa trip, New phone, Home down payment"
+              placeholder={isLoan ? "e.g., Personal Loan, Education Loan, Car Loan" : "e.g., Goa trip, New phone, Home down payment"}
               className="h-10 text-sm bg-white border-zinc-200 rounded-sm"
               autoFocus
             />
@@ -613,8 +778,113 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
             )}
           </div>
 
-          {/* Cost + Timeline */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Loan fields (only for loan category) */}
+          {isLoan && (
+            <div className="space-y-4 p-4 bg-blue-50/40 border border-blue-100 rounded-sm">
+              {/* Principal */}
+              <div className="space-y-1.5">
+                <Label className="text-[11px] font-medium text-blue-700">Loan principal (Rs)</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-zinc-400">Rs</span>
+                  <Input
+                    value={displayInr(loanPrincipal)}
+                    onChange={(e) => setLoanPrincipal(parseInr(e.target.value))}
+                    className="h-10 pl-8 text-sm tabular-nums bg-white border-blue-100 rounded-sm"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              {/* Interest rate + Tenure */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-baseline justify-between">
+                    <Label className="text-[11px] font-medium text-blue-700">Interest rate</Label>
+                    <span className="text-sm font-bold text-blue-900 tabular-nums">{standaloneLoanRate.toFixed(1)}%</span>
+                  </div>
+                  <Slider
+                    value={[standaloneLoanRate * 10]}
+                    onValueChange={(v) => setStandaloneLoanRate((Array.isArray(v) ? v[0] : v) / 10)}
+                    min={60}
+                    max={240}
+                    step={5}
+                    className="mt-3"
+                  />
+                  <div className="flex justify-between text-[10px] text-blue-300 tabular-nums">
+                    <span>6%</span><span>12%</span><span>24%</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-baseline justify-between">
+                    <Label className="text-[11px] font-medium text-blue-700">Tenure</Label>
+                    <span className="text-sm font-bold text-blue-900 tabular-nums">{standaloneLoanTenure} yr</span>
+                  </div>
+                  <Slider
+                    value={[standaloneLoanTenure]}
+                    onValueChange={(v) => setStandaloneLoanTenure(Array.isArray(v) ? v[0] : v)}
+                    min={1}
+                    max={30}
+                    step={1}
+                    className="mt-3"
+                  />
+                  <div className="flex justify-between text-[10px] text-blue-300 tabular-nums">
+                    <span>1yr</span><span>10</span><span>20</span><span>30yr</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Starts in */}
+              <div className="space-y-1.5">
+                <div className="flex items-baseline justify-between">
+                  <Label className="text-[11px] font-medium text-blue-700">EMIs start in</Label>
+                  <span className="text-sm font-bold text-blue-900 tabular-nums">
+                    {loanStartYears === 0 ? "Now" : `${loanStartYears}yr · ${currentYear + loanStartYears}`}
+                  </span>
+                </div>
+                <Slider
+                  value={[loanStartYears]}
+                  onValueChange={(v) => setLoanStartYears(Array.isArray(v) ? v[0] : v)}
+                  min={0}
+                  max={30}
+                  step={1}
+                  className="mt-3"
+                />
+                <div className="flex justify-between text-[10px] text-blue-300 tabular-nums">
+                  <span>Now</span><span>10yr</span><span>20yr</span><span>30yr</span>
+                </div>
+              </div>
+
+              {/* Live preview */}
+              {loanCategoryPreview && loanPrincipal > 0 && (
+                <div className="pt-3 border-t border-blue-100 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-blue-400 mb-0.5">Monthly EMI</p>
+                    <p className="text-base font-extrabold tabular-nums text-blue-900">{formatInrFull(loanCategoryPreview.emi)}</p>
+                    <p className="text-[10px] text-blue-400">/month</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-blue-400 mb-0.5">Total interest</p>
+                    <p className="text-base font-extrabold tabular-nums text-red-600">{formatInrFull(loanCategoryPreview.totalInterest)}</p>
+                    <p className="text-[10px] text-zinc-400">{Math.round((loanCategoryPreview.totalInterest / loanPrincipal) * 100)}% of principal</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-blue-400 mb-0.5">Total payment</p>
+                    <p className="text-base font-extrabold tabular-nums text-zinc-900">{formatInrFull(loanCategoryPreview.totalPayment)}</p>
+                    <p className="text-[10px] text-zinc-400">over {standaloneLoanTenure}yr</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-blue-400 mb-0.5">Paid off by</p>
+                    <p className="text-base font-extrabold tabular-nums text-zinc-900">{loanCategoryPreview.payoffYear}</p>
+                    <p className="text-[10px] text-zinc-400">starts {loanCategoryPreview.startYear}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Cost + Timeline — hidden for loans */}
+          {!isLoan && <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-[11px] font-medium text-zinc-500">
                 {isHouse ? "Property value" : (isCar && addCarLoan && !isEditing) ? "Car value" : isRecurring ? "Annual cost" : "Cost today"}
@@ -651,10 +921,10 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
                 <span>1yr</span><span>10</span><span>20</span><span>30yr</span>
               </div>
             </div>
-          </div>
+          </div>}
 
-          {/* Recurring toggle — not shown for house (loan handles that) */}
-          {!isHouse && (
+          {/* Recurring toggle — not shown for house or loan (loan handles its own start year) */}
+          {!isHouse && !isLoan && (
             <div className="flex items-center justify-between py-2.5 px-3 bg-zinc-50 border border-zinc-100 rounded-sm">
               <div>
                 <p className="text-[11px] font-medium text-zinc-700">Recurring expense</p>
@@ -677,7 +947,7 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
           )}
 
           {/* Recurring duration — how many years does it run? */}
-          {isRecurring && !isHouse && (
+          {isRecurring && !isHouse && !isLoan && (
             <div className="space-y-1.5">
               <div className="flex items-baseline justify-between">
                 <Label className="text-[11px] font-medium text-zinc-500">Runs for</Label>
@@ -810,8 +1080,8 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
             </div>
           )}
 
-          {/* Preview — funding summary */}
-          <div className="p-3 bg-zinc-50 border border-zinc-100 rounded-sm space-y-3">
+          {/* Preview — funding summary (hidden for loans, which have their own preview) */}
+          {!isLoan && <div className="p-3 bg-zinc-50 border border-zinc-100 rounded-sm space-y-3">
             <div className="flex items-baseline justify-between">
               <div>
                 <p className="text-[10px] text-zinc-400 mb-0.5">
@@ -860,7 +1130,7 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
                 Repeats every year. Budget {formatInrFull(incomeMonthly)}/mo from income.
               </p>
             )}
-          </div>
+          </div>}
 
           {/* Loan section for house */}
           {isHouse && loanPreview && (
@@ -964,10 +1234,10 @@ const GoalForm = forwardRef<HTMLDivElement, GoalFormProps>(function GoalForm(
             </Button>
             <Button
               onClick={handleSave}
-              disabled={!name.trim() || todayCost <= 0}
+              disabled={!name.trim() || (isLoan ? loanPrincipal <= 0 : todayCost <= 0)}
               className="flex-1 h-10 text-sm rounded-sm"
             >
-              {isEditing ? "Update" : (isHouse && addLoanGoal) || (isCar && addCarLoan) ? "Add 2 goals" : "Add goal"}
+              {isEditing ? "Update" : isLoan ? "Add loan" : (isHouse && addLoanGoal) || (isCar && addCarLoan) ? "Add 2 goals" : "Add goal"}
             </Button>
           </div>
         </div>

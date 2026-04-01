@@ -16,6 +16,7 @@ const INFLATION_RATES: Record<GoalCategory, number> = {
   vacation: 0.07,
   lifestyle_purchase: 0.06,
   custom: 0.07,
+  loan: 0, // EMI is fixed — no inflation
 };
 
 // ============================================================
@@ -511,6 +512,97 @@ export function computeAllocations(
 }
 
 // ============================================================
+// SIMPLE INVESTMENT BUCKETS
+// Maps time-horizon to the 3 instruments a user actually uses.
+// ============================================================
+export type SimpleBucket = "fd" | "mutual_fund" | "index_fund";
+
+export const SIMPLE_BUCKET_META: Record<SimpleBucket, {
+  label: string;
+  shortLabel: string;
+  description: string;
+  horizon: string;
+}> = {
+  fd: {
+    label: "FD / RD / Liquid Fund",
+    shortLabel: "FD",
+    description: "Fixed Deposit, Recurring Deposit, or Liquid Fund",
+    horizon: "0–3 yr goals",
+  },
+  mutual_fund: {
+    label: "Mutual Fund",
+    shortLabel: "MF",
+    description: "Balanced Advantage / Hybrid Fund",
+    horizon: "3–7 yr goals",
+  },
+  index_fund: {
+    label: "Index Fund",
+    shortLabel: "Index",
+    description: "Nifty 50 / Sensex ETF or NPS (for retirement)",
+    horizon: "7yr+ goals & retirement",
+  },
+};
+
+export function getSimpleBucket(yearsToGoal: number, isRetirement: boolean): SimpleBucket {
+  if (isRetirement || yearsToGoal > 7) return "index_fund";
+  if (yearsToGoal > 3) return "mutual_fund";
+  return "fd";
+}
+
+// ============================================================
+// SALARY NEEDED TO FULLY FUND ALL GOALS
+// Binary-searches for the gross annual income at which the
+// monthly surplus exactly covers totalIdealSip.
+// ============================================================
+export function findSalaryForSurplus(
+  targetSurplus: number,
+  monthlyExpenses: number,
+  existingEmis: number,
+  taxRegime: "old" | "new",
+  spouseIncome: number = 0,
+  existingInvestmentMonthly: number = 0,
+): number {
+  const spouseTax = spouseIncome > 0 ? calculateTax(spouseIncome, taxRegime) : 0;
+  const spouseInhand = (spouseIncome - spouseTax) / 12;
+  // How much in-hand do we need from the primary earner?
+  const neededInhand = targetSurplus + monthlyExpenses + existingEmis + existingInvestmentMonthly - spouseInhand;
+  if (neededInhand <= 0) return 0; // spouse income covers it
+
+  // Binary search: find annual income where post-tax monthly = neededInhand
+  let lo = 0;
+  let hi = 20000000; // 2 Cr cap
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    const inhand = (mid - calculateTax(mid, taxRegime)) / 12;
+    if (inhand < neededInhand) lo = mid;
+    else hi = mid;
+  }
+  return Math.round(hi);
+}
+
+/** Years until salary reaches target at a flat annual growth rate. Returns null if never. */
+export function yearsToReachSalary(
+  currentIncome: number,
+  targetIncome: number,
+  annualGrowthRate: number,
+): number | null {
+  if (currentIncome >= targetIncome) return 0;
+  if (annualGrowthRate <= 0) return null;
+  return Math.ceil(Math.log(targetIncome / currentIncome) / Math.log(1 + annualGrowthRate));
+}
+
+/** Growth rate needed to reach targetIncome from currentIncome in exactly N years. */
+export function growthRateNeeded(
+  currentIncome: number,
+  targetIncome: number,
+  years: number,
+): number | null {
+  if (years <= 0 || currentIncome <= 0) return null;
+  if (currentIncome >= targetIncome) return 0;
+  return Math.pow(targetIncome / currentIncome, 1 / years) - 1;
+}
+
+// ============================================================
 // HELPERS
 // ============================================================
 export function getInflationRate(category: GoalCategory): number {
@@ -638,12 +730,12 @@ export const GOAL_TEMPLATES: GoalTemplate[] = [
     description: "Sofa, TV, fridge, washing machine, AC",
   },
   {
-    name: "Loan / EMI",
-    category: "custom",
-    defaultCost: 240000,
+    name: "Loan",
+    category: "loan",
+    defaultCost: 500000,
     inflationRate: 0,
     defaultYearsFromNow: 1,
     isRecurring: true,
-    description: "Car loan, personal loan, education loan, or any existing EMI (enter annual EMI = monthly × 12)",
+    description: "Personal loan, education loan, car loan, or any EMI — enter principal + rate and EMI is calculated automatically",
   },
 ];

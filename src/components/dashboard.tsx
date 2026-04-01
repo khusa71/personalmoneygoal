@@ -16,7 +16,9 @@ import type { FeasibilityResult, GoalDetail } from "@/types";
 import {
   computeAllocations, computeGoalDetail, formatInr, formatInrFull,
   calculateTax, retirementCorpus, futureValue, simulateWaterfallRetirement,
-  requiredMonthlySip,
+  requiredMonthlySip, getSalaryGrowthRate,
+  getSimpleBucket, SIMPLE_BUCKET_META, type SimpleBucket,
+  findSalaryForSurplus, yearsToReachSalary, growthRateNeeded,
 } from "@/lib/financial-engine";
 import { buildFundingPlan } from "@/lib/funding-plan";
 import ScenarioLab from "@/components/scenario-lab";
@@ -89,6 +91,7 @@ function RecurringTimeline({ bands, maxVisibleYear }: {
 
 interface DashboardProps {
   state: AppState;
+  onGoToGoals?: () => void;
 }
 
 const card = "rounded-sm ring-0 border border-zinc-200/60 shadow-[0_2px_8px_rgba(0,0,0,0.03)] gap-0 py-0";
@@ -104,7 +107,7 @@ function crFmt(v: number) {
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
-export default function Dashboard({ state }: DashboardProps) {
+export default function Dashboard({ state, onGoToGoals }: DashboardProps) {
   const currentYear = new Date().getFullYear();
   const { profile } = state;
 
@@ -184,6 +187,62 @@ export default function Dashboard({ state }: DashboardProps) {
     .filter(a => state.goals.find(g => g.id === a.goalId)?.isRecurring)
     .reduce((sum, a) => sum + a.monthlyAmount, 0);
   const portfolioMonthlySip = totalMonthlyInvesting - recurringGoalMonthly;
+
+  // ── Simple bucket totals (consolidated portfolio view) ───────────────────
+  const bucketTotals = useMemo(() => {
+    const totals: Record<SimpleBucket, number> = { fd: 0, mutual_fund: 0, index_fund: 0 };
+    // Emergency fund contribution → FD
+    if (result.emergencyFundStatus.monthlyContribution > 0) {
+      totals.fd += result.emergencyFundStatus.monthlyContribution;
+    }
+    for (const alloc of result.allocations) {
+      if (alloc.monthlyAmount <= 0) continue;
+      if (alloc.goalId === "__retirement__") {
+        totals.index_fund += alloc.monthlyAmount;
+        continue;
+      }
+      const gd = goalDetails.find(g => g.id === alloc.goalId);
+      if (!gd || gd.category === "loan") continue;  // loans are EMI expenses, not investments
+      const bucket = getSimpleBucket(gd.yearsToGoal, false);
+      totals[bucket] += alloc.monthlyAmount;
+    }
+    return totals;
+  }, [result, goalDetails]);
+
+  // Goals in each bucket — for tooltip breakdown
+  const bucketGoals = useMemo(() => {
+    const map: Record<SimpleBucket, string[]> = { fd: [], mutual_fund: [], index_fund: ["Retirement"] };
+    if (result.emergencyFundStatus.monthlyContribution > 0) map.fd.push("Emergency Fund");
+    for (const alloc of result.allocations) {
+      if (alloc.monthlyAmount <= 0 || alloc.goalId === "__retirement__") continue;
+      const gd = goalDetails.find(g => g.id === alloc.goalId);
+      if (!gd || gd.category === "loan") continue;  // loans are expenses, not investments
+      const bucket = getSimpleBucket(gd.yearsToGoal, false);
+      map[bucket].push(alloc.goalName);
+    }
+    return map;
+  }, [result, goalDetails]);
+
+  // ── Salary needed to fully fund all goals ────────────────────────────────
+  const salaryAnalysis = useMemo(() => {
+    if (result.feasible) return null; // already fully funded
+    const neededSurplus = result.totalIdealSip + state.existingInvestmentMonthly;
+    const currentSalary = profile.annualIncome;
+    const neededSalary = findSalaryForSurplus(
+      neededSurplus,
+      totalMonthlyExpenses,
+      profile.existingEmis,
+      profile.taxRegime,
+      profile.spouseIncome,
+      state.existingInvestmentMonthly,
+    );
+    if (neededSalary <= currentSalary) return null;
+    const currentGrowthRate = getSalaryGrowthRate(profile.age);
+    const yearsAtCurrentGrowth = yearsToReachSalary(currentSalary, neededSalary, currentGrowthRate);
+    // What growth rate gets there in 3 years?
+    const growthFor3Yrs = growthRateNeeded(currentSalary, neededSalary, 3);
+    return { neededSalary, currentGrowthRate, yearsAtCurrentGrowth, growthFor3Yrs };
+  }, [result, profile, totalMonthlyExpenses, state.existingInvestmentMonthly]);
 
   // Donut data — actual allocations only
   const pieData = result.allocations
@@ -442,43 +501,110 @@ export default function Dashboard({ state }: DashboardProps) {
         className={card}
         style={{ borderLeft: `4px solid ${result.feasible ? "#10b981" : "#ef4444"}` }}
       >
-        <CardContent className="px-5 py-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-400 mb-0.5">Plan status</p>
-            <h2 className="text-2xl font-black tracking-tight text-zinc-900">
-              {result.feasible ? "The math works." : "You're short."}
-            </h2>
-            <p className="text-sm text-zinc-500 mt-1">
-              {result.feasible
-                ? `${goalDetails.length} goal${goalDetails.length === 1 ? "" : "s"} + retirement fully funded from ${formatInrFull(result.monthlySurplus)}/mo surplus`
-                : (() => {
-                    if (gapComposition.length > 0 && gapComposition.length <= 3) {
-                      return gapComposition.map(g => `${g.name}: ${formatInrFull(g.gap)}`).join(" + ") + ` = ${formatInrFull(result.monthlyGap)}/mo gap`;
-                    }
-                    if (gapComposition.length > 3) {
-                      return `${formatInrFull(result.monthlyGap)}/mo gap across ${gapComposition.length} underfunded goals`;
-                    }
-                    return `${formatInrFull(result.monthlyGap)}/mo gap -- adjust goals or defer retirement`;
-                  })()}
-            </p>
+        <CardContent className="px-5 py-5">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-400 mb-0.5">Plan status</p>
+              <h2 className="text-2xl font-black tracking-tight text-zinc-900">
+                {result.feasible ? "The math works." : "You're short."}
+              </h2>
+              <p className="text-sm text-zinc-500 mt-1">
+                {result.feasible
+                  ? `${goalDetails.length} goal${goalDetails.length === 1 ? "" : "s"} + retirement fully funded from ${formatInrFull(result.monthlySurplus)}/mo surplus`
+                  : (() => {
+                      if (gapComposition.length > 0 && gapComposition.length <= 3) {
+                        return gapComposition.map(g => `${g.name}: ${formatInrFull(g.gap)}`).join(" + ") + ` = ${formatInrFull(result.monthlyGap)}/mo gap`;
+                      }
+                      if (gapComposition.length > 3) {
+                        return `${formatInrFull(result.monthlyGap)}/mo gap across ${gapComposition.length} underfunded goals`;
+                      }
+                      return `${formatInrFull(result.monthlyGap)}/mo gap -- adjust goals or defer retirement`;
+                    })()}
+              </p>
+            </div>
+            <div className="sm:text-right shrink-0 sm:ml-10">
+              <Badge
+                className="text-[9px] font-black uppercase tracking-[0.15em] border-0 mb-1"
+                style={result.feasible
+                  ? { background: "#ecfdf5", color: "#059669" }
+                  : { background: "#fef2f2", color: "#dc2626" }}
+              >
+                {result.feasible ? "Feasible" : "Shortfall"}
+              </Badge>
+              <p
+                className="text-3xl font-black tabular-nums leading-none"
+                style={{ color: result.feasible ? "#10b981" : "#ef4444" }}
+              >
+                {result.feasible ? `+${formatInr(leftover)}` : `\u2212${formatInr(result.monthlyGap)}`}
+              </p>
+              <p className="text-[10px] text-zinc-400 mt-0.5">per month</p>
+            </div>
           </div>
-          <div className="sm:text-right shrink-0 sm:ml-10">
-            <Badge
-              className="text-[9px] font-black uppercase tracking-[0.15em] border-0 mb-1"
-              style={result.feasible
-                ? { background: "#ecfdf5", color: "#059669" }
-                : { background: "#fef2f2", color: "#dc2626" }}
-            >
-              {result.feasible ? "Feasible" : "Shortfall"}
-            </Badge>
-            <p
-              className="text-3xl font-black tabular-nums leading-none"
-              style={{ color: result.feasible ? "#10b981" : "#ef4444" }}
-            >
-              {result.feasible ? `+${formatInr(leftover)}` : `\u2212${formatInr(result.monthlyGap)}`}
-            </p>
-            <p className="text-[10px] text-zinc-400 mt-0.5">per month</p>
-          </div>
+
+          {/* This month — consolidated instrument buckets */}
+          {(bucketTotals.fd > 0 || bucketTotals.mutual_fund > 0 || bucketTotals.index_fund > 0) && (
+            <div className="mt-4 pt-4 border-t border-zinc-100">
+              <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-400 mb-2">Where to invest this month</p>
+              <div className="flex flex-wrap gap-2">
+                {(["fd", "mutual_fund", "index_fund"] as SimpleBucket[])
+                  .filter(b => bucketTotals[b] > 0)
+                  .map(b => {
+                    const meta = SIMPLE_BUCKET_META[b];
+                    const goals = bucketGoals[b];
+                    return (
+                      <div key={b} className="flex flex-col px-3 py-2 bg-zinc-50 border border-zinc-100 rounded-[2px] min-w-[120px]">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-[13px] font-extrabold tabular-nums text-zinc-900">{formatInrFull(bucketTotals[b])}</span>
+                          <span className="text-[10px] font-bold text-zinc-600">{meta.shortLabel}</span>
+                        </div>
+                        <span className="text-[9px] text-zinc-400 mt-0.5">{meta.label}</span>
+                        {goals.length > 0 && (
+                          <span className="text-[9px] text-zinc-300 mt-0.5 truncate max-w-[160px]" title={goals.join(", ")}>
+                            {goals.slice(0, 2).join(", ")}{goals.length > 2 ? ` +${goals.length - 2}` : ""}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                {state.existingInvestmentMonthly > 0 && (
+                  <div className="flex flex-col px-3 py-2 bg-zinc-50/60 border border-dashed border-zinc-200 rounded-[2px]">
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-[13px] font-extrabold tabular-nums text-zinc-500">{formatInrFull(state.existingInvestmentMonthly)}</span>
+                      <span className="text-[10px] font-bold text-zinc-400">existing</span>
+                    </div>
+                    <span className="text-[9px] text-zinc-300 mt-0.5">SIPs already running</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Salary insight — only when there's a gap */}
+          {salaryAnalysis && (
+            <div className="mt-3 pt-3 border-t border-zinc-100">
+              <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-400 mb-1.5">To close the gap</p>
+              <div className="flex flex-wrap gap-x-5 gap-y-1">
+                <p className="text-[11px] text-zinc-600">
+                  Fully funded at{" "}
+                  <span className="font-extrabold text-zinc-900">₹{(salaryAnalysis.neededSalary / 100000).toFixed(1)}L</span>
+                  {" "}annual income
+                  <span className="text-zinc-400"> (vs current ₹{(profile.annualIncome / 100000).toFixed(1)}L)</span>
+                </p>
+                {salaryAnalysis.yearsAtCurrentGrowth !== null && (
+                  <p className="text-[11px] text-zinc-500">
+                    At {Math.round(salaryAnalysis.currentGrowthRate * 100)}%/yr growth:{" "}
+                    <span className="font-bold text-zinc-800">{salaryAnalysis.yearsAtCurrentGrowth} years</span>
+                  </p>
+                )}
+                {salaryAnalysis.growthFor3Yrs !== null && salaryAnalysis.growthFor3Yrs > 0 && (
+                  <p className="text-[11px] text-zinc-500">
+                    To get there in 3 yrs:{" "}
+                    <span className="font-bold text-zinc-800">{Math.round(salaryAnalysis.growthFor3Yrs * 100)}%/yr growth needed</span>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -605,6 +731,22 @@ export default function Dashboard({ state }: DashboardProps) {
         </CardHeader>
         <CardContent className="px-0 pb-0">
 
+          {/* No goals empty state */}
+          {goalDetails.length === 0 && (
+            <div className="px-5 py-8 text-center">
+              <p className="text-sm font-semibold text-zinc-700 mb-1">No goals added yet</p>
+              <p className="text-[11px] text-zinc-400 mb-4">Add wedding, house, education, or any other life goal to see how your money gets allocated.</p>
+              {onGoToGoals && (
+                <button
+                  onClick={onGoToGoals}
+                  className="px-4 py-2 text-[10.5px] font-bold uppercase tracking-[0.1em] bg-zinc-900 text-white rounded-[2px] hover:bg-zinc-800 transition-colors"
+                >
+                  Add your first goal
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Corpus deployment summary */}
           {hasCorpusAllocations && (
             <div className="px-5 py-3 bg-zinc-50/60 border-b border-zinc-100">
@@ -672,7 +814,7 @@ export default function Dashboard({ state }: DashboardProps) {
                       <th className="py-2.5 pr-4 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 hidden sm:table-cell">Corpus</th>
                     )}
                     <th className="py-2.5 pr-4 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400">Monthly SIP</th>
-                    <th className="py-2.5 pr-4 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 hidden sm:table-cell">Instrument</th>
+                    <th className="py-2.5 pr-4 text-left text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 hidden sm:table-cell">Invest in</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -694,7 +836,10 @@ export default function Dashboard({ state }: DashboardProps) {
                       <td className="py-2.5 pr-4 text-sm font-bold tabular-nums text-zinc-900">
                         {formatInrFull(result.emergencyFundStatus.monthlyContribution)}/mo
                       </td>
-                      <td className="py-2.5 pr-4 text-[11px] text-zinc-400 hidden sm:table-cell">Liquid Fund / Savings</td>
+                      <td className="py-2.5 pr-4 hidden sm:table-cell">
+                        <p className="text-[11px] font-semibold text-zinc-700">FD / RD</p>
+                        <p className="text-[9px] text-zinc-400">liquid savings</p>
+                      </td>
                     </tr>
                   )}
 
@@ -713,10 +858,15 @@ export default function Dashboard({ state }: DashboardProps) {
                       <tr key={g.id} className="border-b border-zinc-50 last:border-0 hover:bg-zinc-50/40 transition-colors">
                         <td className="py-2.5 px-4">
                           <p className="text-sm font-bold text-zinc-900">{g.name}</p>
-                          {g.isRecurring && <p className="text-[10px] text-zinc-400">recurring · from income</p>}
+                          {g.category === "loan"
+                            ? <p className="text-[10px] text-blue-500">loan emi · {g.loanInterestRate ? `${(g.loanInterestRate * 100).toFixed(1)}%` : ""} · {g.loanTenureYears}yr</p>
+                            : g.isRecurring && <p className="text-[10px] text-zinc-400">recurring · from income</p>
+                          }
                           <p className="text-[10px] text-zinc-400 tabular-nums sm:hidden">
                             {g.isRecurring && g.endYear ? `${g.targetYear}–${g.endYear}` : g.targetYear}
-                            {" · "}{formatInrFull(g.futureCost)}{g.isRecurring ? "/yr" : ""}
+                            {g.category === "loan"
+                              ? ` · ${formatInrFull(g.loanPrincipal ?? 0)} principal`
+                              : ` · ${formatInrFull(g.futureCost)}${g.isRecurring ? "/yr" : ""}`}
                           </p>
                         </td>
                         <td className="py-2.5 pr-4 text-sm tabular-nums text-zinc-700 hidden sm:table-cell">
@@ -758,7 +908,23 @@ export default function Dashboard({ state }: DashboardProps) {
                             </>
                           )}
                         </td>
-                        <td className="py-2.5 pr-4 text-[11px] text-zinc-400 hidden sm:table-cell">{g.instrument}</td>
+                          <td className="py-2.5 pr-4 hidden sm:table-cell">
+                          {g.category === "loan" ? (
+                            <div>
+                              <p className="text-[11px] font-semibold text-blue-600">Loan EMI</p>
+                              <p className="text-[9px] text-zinc-400">{g.loanPrincipal ? `${formatInr(g.loanPrincipal)} principal` : "expense"}</p>
+                            </div>
+                          ) : (() => {
+                            const bucket = getSimpleBucket(g.yearsToGoal, false);
+                            const meta = SIMPLE_BUCKET_META[bucket];
+                            return (
+                              <div>
+                                <p className="text-[11px] font-semibold text-zinc-700">{meta.label}</p>
+                                <p className="text-[9px] text-zinc-400">{meta.horizon}</p>
+                              </div>
+                            );
+                          })()}
+                        </td>
                       </tr>
                     );
                   })}
@@ -793,18 +959,34 @@ export default function Dashboard({ state }: DashboardProps) {
                           )}
                           <p className="text-[10px] text-zinc-400 mt-0.5">steps up yearly with salary</p>
                         </td>
-                        <td className="py-2.5 pr-4 text-[11px] text-zinc-400 hidden sm:table-cell">NPS + Index Fund</td>
+                        <td className="py-2.5 pr-4 hidden sm:table-cell">
+                          <p className="text-[11px] font-semibold text-zinc-700">Index Fund</p>
+                          <p className="text-[9px] text-zinc-400">NPS or ETF</p>
+                        </td>
                       </tr>
                     );
                   })()}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t border-zinc-200">
-                    <td colSpan={hasCorpusAllocations ? 4 : 3} className="py-2.5 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400">
-                      Total monthly investment
+                  <tr className="border-t border-zinc-200 bg-zinc-50/60">
+                    <td colSpan={hasCorpusAllocations ? 4 : 3} className="py-3 px-4">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 mb-1.5">Portfolio summary</p>
+                      <div className="flex flex-wrap gap-3">
+                        {(["fd", "mutual_fund", "index_fund"] as SimpleBucket[])
+                          .filter(b => bucketTotals[b] > 0)
+                          .map(b => (
+                            <div key={b} className="flex items-baseline gap-1">
+                              <span className="text-[11px] font-extrabold tabular-nums text-zinc-900">{formatInrFull(bucketTotals[b])}</span>
+                              <span className="text-[9px] text-zinc-500">{SIMPLE_BUCKET_META[b].label}</span>
+                            </div>
+                          ))}
+                      </div>
                     </td>
-                    <td className="py-2.5 pr-4 text-sm font-extrabold tabular-nums text-zinc-900">
-                      {formatInrFull(totalMonthlyInvesting)}/mo
+                    <td className="py-3 pr-4 align-top">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-400 mb-1.5">Total</p>
+                      <p className="text-sm font-extrabold tabular-nums text-zinc-900">
+                        {formatInrFull(totalMonthlyInvesting)}/mo
+                      </p>
                     </td>
                     <td className="hidden sm:table-cell" />
                   </tr>

@@ -9,7 +9,8 @@ export type GoalCategory =
   | "parents_medical"
   | "vacation"
   | "lifestyle_purchase"
-  | "custom";
+  | "custom"
+  | "loan";
 
 export type GoalStatus = "active" | "completed" | "deferred";
 
@@ -42,6 +43,10 @@ export interface Goal {
   priority: number; // tier 0-4
   existingCorpus: number; // already saved toward this goal
   endYear?: number; // for recurring goals: when the expense stops (e.g., kid turns 22)
+  // Loan-specific fields (only when category === "loan")
+  loanPrincipal?: number;      // original principal amount
+  loanInterestRate?: number;   // annual rate, decimal (e.g. 0.085 for 8.5%)
+  loanTenureYears?: number;    // loan tenure in years
 }
 
 export interface Allocation {
