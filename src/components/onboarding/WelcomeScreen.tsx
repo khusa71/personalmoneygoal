@@ -91,7 +91,7 @@ export default function WelcomeScreen({ onStart }: WelcomeScreenProps) {
             >
               <span className="text-white text-[9px] font-black tracking-tight leading-none">FG</span>
             </div>
-            <span className="text-[14px] font-black tracking-[-0.04em] text-zinc-900">FinGoal</span>
+            <span className="text-[14px] font-black tracking-[-0.04em] text-zinc-900">Personal Money Goal</span>
           </div>
           <span className="text-[10px] font-bold tabular-nums text-zinc-400 tracking-[0.14em] uppercase">
             01 / 06

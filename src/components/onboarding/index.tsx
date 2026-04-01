@@ -235,7 +235,7 @@ export default function Onboarding({ state, onComplete }: OnboardingProps) {
               <div className="w-5 h-5 bg-zinc-900 flex items-center justify-center rounded-[2px] shrink-0">
                 <span className="text-white text-[7px] font-black leading-none">FG</span>
               </div>
-              <span className="text-sm font-black tracking-[-0.04em] text-zinc-900">FinGoal</span>
+              <span className="text-sm font-black tracking-[-0.04em] text-zinc-900">Personal Money Goal</span>
             </div>
           </div>
           <span className="text-[11px] font-bold tabular-nums text-zinc-400 tracking-[0.1em]">

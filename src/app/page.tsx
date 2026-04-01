@@ -19,7 +19,7 @@ export default function LandingPage() {
             <polyline points="6,24 11,17 17,20 26,9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
             <circle cx="26" cy="9" r="2.5" fill="white"/>
           </svg>
-          <span className="text-[15px] font-black tracking-[-0.04em] text-zinc-900">FinGoal</span>
+          <span className="text-[15px] font-black tracking-[-0.04em] text-zinc-900">Personal Money Goal</span>
         </span>
         <div className="flex items-center gap-2">
           <Link href="/auth/login">

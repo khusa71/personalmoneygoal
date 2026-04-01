@@ -61,7 +61,7 @@ export default function SignupPage() {
               <polyline points="6,24 11,17 17,20 26,9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
               <circle cx="26" cy="9" r="2.5" fill="white"/>
             </svg>
-            <h1 className="text-[15px] font-black tracking-[-0.04em] text-zinc-900">FinGoal</h1>
+            <h1 className="text-[15px] font-black tracking-[-0.04em] text-zinc-900">Personal Money Goal</h1>
           </div>
           <p className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-zinc-400">
             Check your email
@@ -103,7 +103,7 @@ export default function SignupPage() {
             <polyline points="6,24 11,17 17,20 26,9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
             <circle cx="26" cy="9" r="2.5" fill="white"/>
           </svg>
-          <h1 className="text-[15px] font-black tracking-[-0.04em] text-zinc-900">FinGoal</h1>
+          <h1 className="text-[15px] font-black tracking-[-0.04em] text-zinc-900">Personal Money Goal</h1>
         </div>
         <p className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-zinc-400">
           Create your account

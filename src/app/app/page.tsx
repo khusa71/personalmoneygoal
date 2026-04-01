@@ -70,7 +70,7 @@ export default function AppPage() {
         {/* Top row */}
         <div className="h-14 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 sm:gap-6">
-            <span className="text-[15px] font-black tracking-[-0.04em] text-zinc-900 shrink-0">FinGoal</span>
+            <span className="text-[15px] font-black tracking-[-0.04em] text-zinc-900 shrink-0">Personal Money Goal</span>
 
             {/* Tabs — desktop only in top row */}
             <div className="hidden sm:block">
