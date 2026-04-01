@@ -14,9 +14,25 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://personalmoneygoal.in"),
   title: "FinGoal — Will Your Life Math Work?",
   description:
     "Plan your wedding, house, kids, education, retirement — all on one salary. See if the math works and get your exact monthly money moves.",
+  openGraph: {
+    title: "FinGoal — Will Your Life Math Work?",
+    description:
+      "Plan your wedding, house, kids, education, retirement — all on one salary. See if the math works and get your exact monthly money moves.",
+    url: "https://personalmoneygoal.in",
+    siteName: "FinGoal",
+    locale: "en_IN",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "FinGoal — Will Your Life Math Work?",
+    description:
+      "Plan your wedding, house, kids, education, retirement — all on one salary. See if the math works and get your exact monthly money moves.",
+  },
 };
 
 export default function RootLayout({
