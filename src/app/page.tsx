@@ -13,8 +13,13 @@ export default function LandingPage() {
     >
       {/* Nav */}
       <nav className="shrink-0 bg-white/80 backdrop-blur-md border-b border-zinc-200/40 px-6 h-14 flex items-center justify-between">
-        <span className="text-[15px] font-black tracking-[-0.04em] text-zinc-900">
-          FinGoal
+        <span className="flex items-center gap-2">
+          <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect width="32" height="32" rx="7" fill="#18181b"/>
+            <polyline points="6,24 11,17 17,20 26,9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <circle cx="26" cy="9" r="2.5" fill="white"/>
+          </svg>
+          <span className="text-[15px] font-black tracking-[-0.04em] text-zinc-900">FinGoal</span>
         </span>
         <div className="flex items-center gap-2">
           <Link href="/auth/login">

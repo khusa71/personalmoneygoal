@@ -55,9 +55,14 @@ export default function SignupPage() {
     return (
       <div className="space-y-6">
         <div className="text-center space-y-1">
-          <h1 className="text-[15px] font-black tracking-[-0.04em] text-zinc-900">
-            FinGoal
-          </h1>
+          <div className="flex items-center justify-center gap-2">
+            <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect width="32" height="32" rx="7" fill="#18181b"/>
+              <polyline points="6,24 11,17 17,20 26,9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <circle cx="26" cy="9" r="2.5" fill="white"/>
+            </svg>
+            <h1 className="text-[15px] font-black tracking-[-0.04em] text-zinc-900">FinGoal</h1>
+          </div>
           <p className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-zinc-400">
             Check your email
           </p>
@@ -92,9 +97,14 @@ export default function SignupPage() {
   return (
     <div className="space-y-6">
       <div className="text-center space-y-1">
-        <h1 className="text-[15px] font-black tracking-[-0.04em] text-zinc-900">
-          FinGoal
-        </h1>
+        <div className="flex items-center justify-center gap-2">
+          <svg width="22" height="22" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <rect width="32" height="32" rx="7" fill="#18181b"/>
+            <polyline points="6,24 11,17 17,20 26,9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <circle cx="26" cy="9" r="2.5" fill="white"/>
+          </svg>
+          <h1 className="text-[15px] font-black tracking-[-0.04em] text-zinc-900">FinGoal</h1>
+        </div>
         <p className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-zinc-400">
           Create your account
         </p>
